@@ -7,13 +7,14 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import ru.nsu.opentrip.Properties;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class LocationApp extends Application {
-
     private APIWorker apiWorker = new APIWorker();
+    ExecutorService executor = Executors.newFixedThreadPool(3);
 
     public static void main(String[] args) {
         launch(args);
@@ -33,32 +34,33 @@ public class LocationApp extends Application {
         ListView<String> resultList = new ListView<>();
         resultList.setPrefHeight(200);
 
-        AtomicReference<List<Location>> locations = new AtomicReference<>();
+        AtomicReference<List<Location>> atomicLocations = new AtomicReference<>();
         searchButton.setOnAction(e -> {
             String inputText = locationInput.getText();
             locationInput.clear();
-            locations.set(apiWorker.getLocationsByAddress(inputText));
+            atomicLocations.set(apiWorker.getLocationsByAddress(inputText));
+            List<Location> locations = atomicLocations.get();
 
             resultList.getItems().clear();
 
-            if (locations.get().isEmpty()) {
+            if (locations.isEmpty()) {
                 resultList.getItems().add("Нет результатов");
             } else {
-                for (Location location : locations.get()) {
+                for (Location location : locations) {
                     resultList.getItems().add(location.getName());
                 }
             }
         });
 
         resultList.setOnMouseClicked(event -> {
-            if (locations.get().isEmpty()) {
+            List<Location> locations = atomicLocations.get();
+            if (locations.isEmpty()) {
                 return;
             }
-            if (resultList.getSelectionModel().getSelectedIndex() >= locations.get().size()) {
+            if (resultList.getSelectionModel().getSelectedIndex() >= locations.size()) {
                 return;
             }
-            Location selectedLocation = locations.get().get(resultList.getSelectionModel().getSelectedIndex());
-            locations.set(new ArrayList<>());
+            Location selectedLocation = locations.get(resultList.getSelectionModel().getSelectedIndex());
             String weather = apiWorker.getWeatherByCoordinates(selectedLocation.getLat(), selectedLocation.getLon());
             List<Properties> places = apiWorker.getInterestingPlacesByCoordinates(selectedLocation.getLon() - 0.01, selectedLocation.getLat() - 0.01, selectedLocation.getLon() + 0.01, selectedLocation.getLat() + 0.01);
 
@@ -68,10 +70,12 @@ public class LocationApp extends Application {
             if (!places.isEmpty()) {
                 resultList.getItems().add("Интересные места:");
                 for (Properties place : places) {
-                    resultList.getItems().add("- " + place.getName());
-                    String info = apiWorker.getInfoAboutPlace(place.getXid());
-                    if (info != null) {
-                        resultList.getItems().add("-- " + info);
+                    if (place.getName() != null) {
+                        resultList.getItems().add("- " + place.getName());
+                        String info = apiWorker.getInfoAboutPlace(place.getXid());
+                        if (info != null) {
+                            resultList.getItems().add("-- " + info);
+                        }
                     }
                 }
             } else {
