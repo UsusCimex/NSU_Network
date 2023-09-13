@@ -19,7 +19,6 @@ public class Multicast {
         try {
             multicastAddress = InetAddress.getByName(multicastGroup);
 
-            // Определяем, IPv4 или IPv6 адрес
             if (multicastAddress instanceof Inet4Address) {
                 System.out.println("Used IPv4");
             } else if (multicastAddress instanceof Inet6Address) {
@@ -29,8 +28,12 @@ public class Multicast {
                 System.exit(1);
             }
 
+            InetAddress inetAddress = InetAddress.getByName("192.168.0.1");
+            NetworkInterface networkInterface = NetworkInterface.getByInetAddress(inetAddress);
             MulticastSocket socket = new MulticastSocket(multicastPort);
+            socket.setNetworkInterface(networkInterface);
             socket.joinGroup(multicastAddress);
+
             System.out.println("Connected to group " + multicastGroup + ":" + multicastPort);
 
             Map<String, Long> userList = new HashMap<>();
@@ -40,7 +43,7 @@ public class Multicast {
             Thread senderThread = new Thread(() -> {
                 try {
                     while (true) {
-                        sendMulticastMessage(socket, multicastAddress, multicastPort);
+                        sendMulticastMessage(socket, multicastAddress, multicastPort); //Inteface
                         Thread.sleep(500);
                     }
                 } catch (IOException | InterruptedException e) {
