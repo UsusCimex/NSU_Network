@@ -1,7 +1,10 @@
 package ru.nsu.openweather;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class WeatherData {
     private Coord coord;
     private List<Weather> weather;

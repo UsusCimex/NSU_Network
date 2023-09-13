@@ -1,5 +1,7 @@
 package ru.nsu;
 import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -8,14 +10,12 @@ import javafx.stage.Stage;
 import ru.nsu.opentrip.Properties;
 
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class LocationApp extends Application {
     private APIWorker apiWorker = new APIWorker();
-    ExecutorService executor = Executors.newFixedThreadPool(3);
-
+    Semaphore semaphore = new Semaphore(1);
     public static void main(String[] args) {
         launch(args);
     }
@@ -34,53 +34,90 @@ public class LocationApp extends Application {
         ListView<String> resultList = new ListView<>();
         resultList.setPrefHeight(200);
 
-        AtomicReference<List<Location>> atomicLocations = new AtomicReference<>();
         searchButton.setOnAction(e -> {
             String inputText = locationInput.getText();
             locationInput.clear();
-            atomicLocations.set(apiWorker.getLocationsByAddress(inputText));
-            List<Location> locations = atomicLocations.get();
 
-            resultList.getItems().clear();
+            // Асинхронный вызов для получения локаций по адресу
+            CompletableFuture<List<Location>> locationFuture = CompletableFuture.supplyAsync(() -> {
+                return apiWorker.getLocationsByAddress(inputText);
+            });
 
-            if (locations.isEmpty()) {
-                resultList.getItems().add("Нет результатов");
-            } else {
-                for (Location location : locations) {
-                    resultList.getItems().add(location.getName());
-                }
-            }
-        });
+            locationFuture.thenAccept(locations -> {
+                Platform.runLater(() -> {
+                    resultList.getItems().clear();
 
-        resultList.setOnMouseClicked(event -> {
-            List<Location> locations = atomicLocations.get();
-            if (locations.isEmpty()) {
-                return;
-            }
-            if (resultList.getSelectionModel().getSelectedIndex() >= locations.size()) {
-                return;
-            }
-            Location selectedLocation = locations.get(resultList.getSelectionModel().getSelectedIndex());
-            String weather = apiWorker.getWeatherByCoordinates(selectedLocation.getLat(), selectedLocation.getLon());
-            List<Properties> places = apiWorker.getInterestingPlacesByCoordinates(selectedLocation.getLon() - 0.01, selectedLocation.getLat() - 0.01, selectedLocation.getLon() + 0.01, selectedLocation.getLat() + 0.01);
-
-            resultList.getItems().clear();
-            resultList.getItems().add("Погода: " + weather);
-
-            if (!places.isEmpty()) {
-                resultList.getItems().add("Интересные места:");
-                for (Properties place : places) {
-                    if (place.getName() != null) {
-                        resultList.getItems().add("- " + place.getName());
-                        String info = apiWorker.getInfoAboutPlace(place.getXid());
-                        if (info != null) {
-                            resultList.getItems().add("-- " + info);
+                    if (locations.isEmpty()) {
+                        resultList.getItems().add("Нет результатов");
+                    } else {
+                        for (Location location : locations) {
+                            resultList.getItems().add(location.getName());
                         }
                     }
+                });
+            });
+
+            // Обработчик щелчка на элементе resultList
+            resultList.setOnMouseClicked(event -> {
+                List<Location> locations = locationFuture.join();
+                if (locations.isEmpty()) {
+                    return;
                 }
-            } else {
-                resultList.getItems().add("Нет интересных мест");
-            }
+                int selectedIndex = resultList.getSelectionModel().getSelectedIndex();
+                if (selectedIndex >= 0 && selectedIndex < locations.size()) {
+                    Location selectedLocation = locations.get(selectedIndex);
+
+                    // Асинхронный вызов для получения информации о выбранном месте
+                    CompletableFuture<Void> infoFuture = CompletableFuture.runAsync(() -> {
+                        String weather = apiWorker.getWeatherByCoordinates(selectedLocation.getLat(), selectedLocation.getLon());
+                        List<Properties> places = apiWorker.getInterestingPlacesByCoordinates(
+                                selectedLocation.getLon() - 0.01, selectedLocation.getLat() - 0.01,
+                                selectedLocation.getLon() + 0.01, selectedLocation.getLat() + 0.01
+                        );
+
+                        Platform.runLater(() -> {
+                            resultList.getItems().clear();
+                            resultList.getItems().add("Погода: " + weather);
+                            long delayMillis = 500; //Задержка между запросами, 0.5 сек
+
+                            if (!places.isEmpty()) {
+                                resultList.getItems().add("Интересные места:");
+                                for (Properties place : places) {
+                                    if (place.getName() != null) {
+                                        // Асинхронный вызов для получения информации о месте
+                                        CompletableFuture<Void> placeInfoFuture = CompletableFuture.runAsync(() -> {
+                                            try {
+                                                semaphore.acquire();
+                                                String placeInfo = "- " + place.getName();
+
+                                                try {
+                                                    Thread.sleep(delayMillis);
+                                                } catch (InterruptedException ex) {
+                                                    ex.printStackTrace();
+                                                }
+                                                String info = apiWorker.getInfoAboutPlace(place.getXid());
+                                                if (info != null) {
+                                                    placeInfo += "\n-- " + info;
+                                                }
+                                                String finalPlaceInfo = placeInfo;
+                                                Platform.runLater(() -> {
+                                                    resultList.getItems().add(finalPlaceInfo); }
+                                                );
+                                            } catch (InterruptedException ex) {
+                                                ex.printStackTrace();
+                                            } finally {
+                                                semaphore.release();
+                                            }
+                                        });
+                                    }
+                                }
+                            } else {
+                                resultList.getItems().add("Нет интересных мест");
+                            }
+                        });
+                    });
+                }
+            });
         });
 
         vbox.getChildren().addAll(label, locationInput, searchButton, resultList);
