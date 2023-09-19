@@ -28,11 +28,11 @@ public class Multicast {
                 System.exit(1);
             }
 
-            InetAddress inetAddress = InetAddress.getByName("192.168.0.1");
-            NetworkInterface networkInterface = NetworkInterface.getByInetAddress(inetAddress);
+            NetworkInterface networkInterface = NetworkInterface.getByIndex(6);
             MulticastSocket socket = new MulticastSocket(multicastPort);
+            InetSocketAddress mcstAddress = new InetSocketAddress(multicastAddress, multicastPort);
             socket.setNetworkInterface(networkInterface);
-            socket.joinGroup(multicastAddress);
+            socket.joinGroup(mcstAddress, networkInterface);
 
             System.out.println("Connected to group " + multicastGroup + ":" + multicastPort);
 
