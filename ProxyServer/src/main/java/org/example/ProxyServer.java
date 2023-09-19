@@ -274,8 +274,6 @@ public class ProxyServer {
         }
     }
 
-
-
     private static InetAddress resolveDomain(String domain) throws IOException {
         Lookup lookup = new Lookup(domain, Type.A);
         Record[] records = lookup.run();
@@ -284,8 +282,15 @@ public class ProxyServer {
             throw new IOException("Failed to resolve domain: " + domain);
         }
 
-        // Возвращаем первый найденный IPv4 адрес
-        String ipAddress = ((ARecord) records[0]).getAddress().getHostAddress();
-        return InetAddress.getByName(ipAddress);
+        for (Record record : records) {
+            if (record instanceof ARecord) {
+                ARecord aRecord = (ARecord) record;
+                String ipAddress = aRecord.getAddress().getHostAddress();
+                return InetAddress.getByName(ipAddress);
+            }
+        }
+
+        throw new IOException("No IPv4 address found for domain: " + domain);
     }
+
 }
