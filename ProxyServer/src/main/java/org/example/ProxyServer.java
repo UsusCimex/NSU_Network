@@ -196,6 +196,14 @@ public class ProxyServer {
 
             // Передаем данные между клиентским и удаленным каналами
             transferData(clientChannel, remoteChannel);
+
+            // Закрываем соединения, если они не закрыты
+            if (remoteChannel.isOpen()) {
+                remoteChannel.close();
+            }
+            if (clientChannel.isOpen()) {
+                clientChannel.close();
+            }
         } catch (BufferUnderflowException e) {
             // Обработка ошибки BufferUnderflowException
             e.printStackTrace();
@@ -240,7 +248,6 @@ public class ProxyServer {
             // Читаем данные из клиентского канала и пишем их в буфер
             System.err.println("debug");
             int bytesRead = clientChannel.read(buffer);
-            System.err.println("debug1: " + bytesRead);
             if (bytesRead == -1) {
                 // Клиент закрыл соединение
                 break;
@@ -253,7 +260,6 @@ public class ProxyServer {
 
             // Читаем данные из удаленного канала и пишем их в буфер
             bytesRead = remoteChannel.read(buffer);
-            System.err.println("debug2: " + bytesRead);
             if (bytesRead == -1) {
                 // Удаленный сервер закрыл соединение
                 break;
@@ -263,14 +269,6 @@ public class ProxyServer {
                 clientChannel.write(buffer); // Записываем данные в клиентский канал
                 buffer.compact(); // Освобождаем буфер для дополнительного чтения
             }
-        }
-
-        // Закрываем соединения, если они не закрыты
-        if (clientChannel.isOpen()) {
-            clientChannel.close();
-        }
-        if (remoteChannel.isOpen()) {
-            remoteChannel.close();
         }
     }
 
