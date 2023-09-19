@@ -1,0 +1,23 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+mainClassName = 'org.example.ProxyServer'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.9.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    implementation group: 'dnsjava', name: 'dnsjava', version: '3.5.2'
+    implementation 'ch.qos.logback:logback-classic:1.2.6'
+}
+
+test {
+    useJUnitPlatform()
+}
