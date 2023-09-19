@@ -5,7 +5,7 @@ plugins {
 
 group = 'org.example'
 version = '1.0-SNAPSHOT'
-mainClassName = 'org.example.ProxyServer'
+mainClassName = 'ru.nsu.ProxyServer'
 
 repositories {
     mavenCentral()

@@ -1,4 +1,4 @@
-package org.example;
+package ru.nsu;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -195,6 +195,8 @@ public class ProxyServer {
             clientChannel.write(responseBuffer);
 
             // Передаем данные между клиентским и удаленным каналами
+            clientChannel.configureBlocking(false);
+            remoteChannel.configureBlocking(false);
             transferData(clientChannel, remoteChannel);
 
             // Закрываем соединения, если они не закрыты
@@ -246,7 +248,6 @@ public class ProxyServer {
 
         while (true) {
             // Читаем данные из клиентского канала и пишем их в буфер
-            System.err.println("debug");
             int bytesRead = clientChannel.read(buffer);
             if (bytesRead == -1) {
                 // Клиент закрыл соединение
