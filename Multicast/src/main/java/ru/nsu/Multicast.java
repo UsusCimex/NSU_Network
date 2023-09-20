@@ -7,7 +7,7 @@ import java.util.*;
 public class Multicast {
     public static void main(String[] args) {
         if (args.length != 1) {
-            System.out.println("Usage: gradle run --args=\"IP address\"");
+            System.out.println("Usage: java Multicast --args=\"IP address\"");
             System.exit(1);
         }
 
@@ -28,13 +28,28 @@ public class Multicast {
                 System.exit(1);
             }
 
-            NetworkInterface networkInterface = NetworkInterface.getByIndex(6);
-            MulticastSocket socket = new MulticastSocket(multicastPort);
             InetSocketAddress mcstAddress = new InetSocketAddress(multicastAddress, multicastPort);
-            socket.setNetworkInterface(networkInterface);
-            socket.joinGroup(mcstAddress, networkInterface);
+            MulticastSocket socket = new MulticastSocket(multicastPort);
 
-            System.out.println("Connected to group " + multicastGroup + ":" + multicastPort);
+            // Ввод с консоли для выбора интерфейсов
+            NetworkInterface[] availableInterfaces = selectNetworkInterfaces();
+
+            if (availableInterfaces.length == 0) {
+                System.out.println("There are not enough network interfaces to choose from.");
+                System.exit(1);
+            }
+
+            NetworkInterface outInterface = availableInterfaces[2];
+            NetworkInterface inInterface = availableInterfaces[2];
+
+            System.err.println("\nSelected:");
+            System.err.println("Out: " + outInterface);
+            System.err.println("In: " + inInterface);
+
+            socket.setNetworkInterface(outInterface);
+            socket.joinGroup(mcstAddress, inInterface);
+
+            System.out.println("\nConnected to group " + multicastGroup + ":" + multicastPort);
 
             Map<String, Long> userList = new HashMap<>();
             Map<String, Long> oldUserList = new HashMap<>();
@@ -84,7 +99,32 @@ public class Multicast {
             e.printStackTrace();
         }
     }
+    // Метод для выбора двух интерфейсов с консоли
+    private static NetworkInterface[] selectNetworkInterfaces() {
+        try {
+            Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
+            List<NetworkInterface> filteredInterfaces = new ArrayList<>();
 
+            int index = 0;
+            System.out.println("Interfaces list:");
+            while (networkInterfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = networkInterfaces.nextElement();
+
+                // Фильтрация: только интерфейсы, поддерживающие multicast и являющиеся IPv4
+                if (networkInterface.supportsMulticast() && networkInterface.isUp()) {
+                    filteredInterfaces.add(networkInterface);
+                    System.out.println(index + ". " + networkInterface);
+                    index++;
+                }
+            }
+
+            return filteredInterfaces.toArray(new NetworkInterface[0]);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.exit(1);
+            return null;
+        }
+    }
     private static void sendMulticastMessage(MulticastSocket socket, InetAddress multicastAddress, int multicastPort) throws IOException {
         String message = "Hello world!";
         DatagramPacket packet = new DatagramPacket(message.getBytes(), message.length(), multicastAddress, multicastPort);
