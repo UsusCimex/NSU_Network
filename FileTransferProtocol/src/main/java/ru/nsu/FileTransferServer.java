@@ -2,6 +2,7 @@ package ru.nsu;
 
 import java.io.*;
 import java.net.*;
+import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -45,8 +46,12 @@ public class FileTransferServer {
             try (DataInputStream in = new DataInputStream(clientSocket.getInputStream());
                  DataOutputStream out = new DataOutputStream(clientSocket.getOutputStream())) {
 
-                String fileName = in.readUTF();
-                long fileSize = in.readLong();
+                short fileNameLength = in.readShort();
+                byte[] fileNameBytes = new byte[fileNameLength];
+                in.readFully(fileNameBytes);
+                String fileName = new String(fileNameBytes);
+                int fileSize = in.readInt();
+
                 System.out.println("Start receive : " + fileName + "(" + fileSize / 1024 / 1024 + " Mb)");
                 File outputFile = new File(UPLOAD_DIR + fileName);
                 FileOutputStream fileOutputStream = new FileOutputStream(outputFile);
@@ -78,9 +83,9 @@ public class FileTransferServer {
                 fileOutputStream.close();
                 System.out.println("File " + fileName + " received");
                 if (totalBytesReceived == fileSize) {
-                    out.writeUTF("File received successfully.");
+                    out.write("SUC".getBytes());
                 } else {
-                    out.writeUTF("File transfer failed.");
+                    out.write("ERR".getBytes());
                 }
 
             } catch (IOException e) {

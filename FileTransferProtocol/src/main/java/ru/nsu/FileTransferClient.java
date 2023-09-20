@@ -21,7 +21,8 @@ public class FileTransferClient {
             File fileToSend = new File(filePath);
             long fileSize = fileToSend.length();
 
-            out.writeUTF(fileToSend.getName());
+            out.writeShort(fileToSend.getName().length());
+            out.write(fileToSend.getName().getBytes());
             out.writeLong(fileSize);
 
             FileInputStream fileInputStream = new FileInputStream(fileToSend);
@@ -32,9 +33,10 @@ public class FileTransferClient {
             }
             fileInputStream.close();
 
-            String answer = in.readUTF();
-            System.out.println("Server answer: " + answer);
-
+            byte[] answerBytes = new byte[3];
+            in.readFully(answerBytes);
+            String answer = new String(answerBytes);
+            System.out.println("Server answer: " + answer); // SUC = success, ERR - error
         } catch (IOException e) {
             e.printStackTrace();
         }
