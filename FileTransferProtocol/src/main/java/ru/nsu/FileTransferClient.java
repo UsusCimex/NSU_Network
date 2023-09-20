@@ -18,6 +18,8 @@ public class FileTransferClient {
              DataInputStream in = new DataInputStream(socket.getInputStream());
              DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
 
+            System.out.println("Start upload file!");
+
             File fileToSend = new File(filePath);
             long fileSize = fileToSend.length();
 

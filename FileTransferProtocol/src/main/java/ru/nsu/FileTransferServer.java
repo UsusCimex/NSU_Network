@@ -6,6 +6,9 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static ru.nsu.FileWorker.getFileExtension;
+import static ru.nsu.FileWorker.removeFileExtension;
+
 public class FileTransferServer {
     private static final String UPLOAD_DIR = "uploads/";
 
@@ -50,10 +53,21 @@ public class FileTransferServer {
                 byte[] fileNameBytes = new byte[fileNameLength];
                 in.readFully(fileNameBytes);
                 String fileName = new String(fileNameBytes);
-                int fileSize = in.readInt();
+                String filePath = UPLOAD_DIR + fileName;
+                long fileSize = in.readLong();
+                File outputFile = new File(filePath);
 
-                System.out.println("Start receive : " + fileName + "(" + fileSize / 1024 / 1024 + " Mb)");
-                File outputFile = new File(UPLOAD_DIR + fileName);
+                int index = 1;
+                while (outputFile.exists()) {
+                    String fileExtension = getFileExtension(filePath);
+                    String mainFileName = removeFileExtension(filePath);
+                    String newFileName = mainFileName + index + "." + fileExtension;
+                    outputFile = new File(newFileName);
+                    index++;
+                }
+
+                System.out.println("Start receive : " + outputFile.getName() + "(" + fileSize / 1024 / 1024 + " Mb)");
+
                 FileOutputStream fileOutputStream = new FileOutputStream(outputFile);
                 byte[] buffer = new byte[8192];
                 long startTime = System.currentTimeMillis();
@@ -81,7 +95,7 @@ public class FileTransferServer {
                 }
 
                 fileOutputStream.close();
-                System.out.println("File " + fileName + " received");
+                System.out.println("File " + outputFile.getName() + " received");
                 if (totalBytesReceived == fileSize) {
                     out.write("SUC".getBytes());
                 } else {
