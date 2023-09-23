@@ -12,8 +12,6 @@
   <component name="ChangeListManager">
     <list default="true" id="70e8ebde-25ad-492b-87ee-bef9d3749118" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/ru/nsu/FileTransferClient.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/ru/nsu/FileTransferClient.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/ru/nsu/FileTransferServer.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/ru/nsu/FileTransferServer.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../ProxyServer/src/main/java/ru/nsu/ProxyServer.java" beforeDir="false" afterPath="$PROJECT_DIR$/../ProxyServer/src/main/java/ru/nsu/ProxyServer.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -82,7 +80,7 @@
       <workItem from="1694449330813" duration="6095000" />
       <workItem from="1695204218779" duration="769000" />
       <workItem from="1695208559174" duration="3265000" />
-      <workItem from="1695211900107" duration="352000" />
+      <workItem from="1695211900107" duration="1378000" />
     </task>
     <servers />
   </component>

@@ -1,5 +1,10 @@
 package ru.nsu;
 
+import org.xbill.DNS.ARecord;
+import org.xbill.DNS.Lookup;
+import org.xbill.DNS.Record;
+import org.xbill.DNS.Type;
+
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -10,16 +15,18 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Iterator;
-import org.xbill.DNS.ARecord;
-import org.xbill.DNS.Lookup;
-import org.xbill.DNS.Record;
-import org.xbill.DNS.Type;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class ProxyServer {
     private static final String USERNAME = "login";
     private static final String PASSWORD = "password";
-
+    private static ExecutorService threadPool = Executors.newFixedThreadPool(5);
+    private static Map<SocketChannel, SocketChannel> sockets = new HashMap<>();
+    private static Selector selector;
     public static void main(String[] args) throws IOException {
         if (args.length != 1) {
             System.out.println("Usage: java ProxyServer port");
@@ -31,7 +38,7 @@ public class ProxyServer {
         serverSocketChannel.socket().bind(new InetSocketAddress(proxyPort));
         serverSocketChannel.configureBlocking(false);
 
-        Selector selector = Selector.open();
+        selector = Selector.open();
         serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
 
         System.out.println("The proxy server is running on port " + proxyPort);
@@ -49,34 +56,50 @@ public class ProxyServer {
 
                 if (key.isAcceptable()) {
                     // Принимаем входящее соединение и запускаем обработку в отдельном потоке
-                    acceptConnection(key);
+                    threadPool.execute( () -> acceptConnection(key) );
                 } else if (key.isReadable()) {
-                    // temp...
+                    // Транслируем соединение между remoteSocket и ClientSocket
+                    threadPool.execute( () -> readConnection(key) );
                 }
             }
         }
     }
 
     private static void acceptConnection(SelectionKey key) {
-        ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();;
+        ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
         try {
             SocketChannel clientChannel = serverChannel.accept();
-            System.out.println("A new connection to the client has been accepted: " + clientChannel.getRemoteAddress());
+            if (clientChannel != null) {
+                System.out.println("A new connection to the client has been accepted: " + clientChannel.getRemoteAddress());
 
-            // Запускаем обработку клиентского соединения в отдельном потоке
-            new Thread(() -> {
-                try {
-                    handleSocksRequest(clientChannel);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }).start();
+                SocketChannel remoteChannel = handleSocksRequest(clientChannel);
+
+                clientChannel.configureBlocking(false);
+                remoteChannel.configureBlocking(false);
+
+                clientChannel.register(selector, SelectionKey.OP_READ);
+                sockets.put(clientChannel, remoteChannel);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
-
-    private static void handleSocksRequest(SocketChannel clientChannel) throws IOException {
+    private static void readConnection(SelectionKey key) {
+        try {
+            System.err.println("DEBUG1");
+            SocketChannel clientChannel = (SocketChannel) key.channel();
+            SocketChannel remoteChannel = sockets.get(clientChannel);
+            if (remoteChannel == null) {
+                clientChannel.close();
+                return;
+            }
+            System.err.println("DEBUG2");
+            transferData(clientChannel, remoteChannel);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private static SocketChannel handleSocksRequest(SocketChannel clientChannel) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(256); // Размер буфера может быть изменен в зависимости от ваших требований.
 
         // Читаем данные от клиента в буфер.
@@ -84,17 +107,13 @@ public class ProxyServer {
         if (bytesRead == -1) {
             // Если клиент закрыл соединение, закрываем и его соединение и завершаем обработку.
             clientChannel.close();
-            return;
+            throw new IOException("Session closed");
         }
 
+        SocketChannel remoteChannel = null;
         // Парсим SOCKS5 протокол.
         try {
             buffer.flip();
-            if (buffer.remaining() < 3) {
-                // Обработка недостаточного количества данных
-                clientChannel.close();
-                return;
-            }
             byte version = buffer.get();
             byte authMethodsCount = buffer.get();
 
@@ -102,7 +121,7 @@ public class ProxyServer {
             if (version != 5 || authMethodsCount == 0) {
                 // Версия или количество методов не поддерживается.
                 clientChannel.close();
-                return;
+                throw new IOException("Session closed");
             }
 
             // Считываем список методов аутентификации, но мы не будем их анализировать, так как будем использовать анонимный доступ.
@@ -121,15 +140,9 @@ public class ProxyServer {
             bytesRead = clientChannel.read(buffer);
             if (bytesRead == -1) {
                 clientChannel.close();
-                return;
+                throw new IOException("Session closed");
             }
-
             buffer.flip();
-            if (buffer.remaining() < 4) {
-                // Обработка недостаточного количества данных
-                clientChannel.close();
-                return;
-            }
 
             byte ver = buffer.get(); // Версия протокола (5)
             byte cmd = buffer.get(); // Команда 1 - CONNECT, 2 - BIND, 3 - UDP ASSOCIATE
@@ -147,7 +160,7 @@ public class ProxyServer {
                 } else {
                     // Обработка недостаточного количества данных
                     clientChannel.close();
-                    return;
+                    throw new IOException("Session closed");
                 }
             } else if (addressType == 3) {
                 // Доменное имя
@@ -162,25 +175,25 @@ public class ProxyServer {
                     } else {
                         // Обработка недостаточного количества данных
                         clientChannel.close();
-                        return;
+                        throw new IOException("Session closed");
                     }
                 } else {
                     // Обработка недостаточного количества данных
                     clientChannel.close();
-                    return;
+                    throw new IOException("Session closed");
                 }
             } else {
                 // Неподдерживаемый тип адреса, 4 - IPv6
                 System.out.println("Client(" + clientChannel.getRemoteAddress() + ") have unsupported address type: " + addressType);
                 clientChannel.close();
-                return;
+                throw new IOException("Session closed");
             }
 
             int destinationPort = buffer.getShort(); // Порт
             System.out.println("Client(" + clientChannel.getRemoteAddress() + ") went to the address: " + destinationAddress + ":" + destinationPort);
 
             // Устанавливаем соединение с удаленным сервером
-            SocketChannel remoteChannel = SocketChannel.open();
+            remoteChannel = SocketChannel.open();
             remoteChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
 
             // Отправляем ответ клиенту
@@ -193,27 +206,32 @@ public class ProxyServer {
             responseBuffer.putShort((short) destinationPort); // Выданный сервером порт
             responseBuffer.flip();
             clientChannel.write(responseBuffer);
-
-            // Передаем данные между клиентским и удаленным каналами
-            clientChannel.configureBlocking(false);
-            remoteChannel.configureBlocking(false);
-            transferData(clientChannel, remoteChannel);
-
-            // Закрываем соединения, если они не закрыты
-            if (remoteChannel.isOpen()) {
-                remoteChannel.close();
-            }
-            if (clientChannel.isOpen()) {
-                clientChannel.close();
-            }
         } catch (BufferUnderflowException e) {
             // Обработка ошибки BufferUnderflowException
             e.printStackTrace();
             clientChannel.close();
         }
+        return remoteChannel;
     }
+    private static InetAddress resolveDomain(String domain) throws IOException {
+        Lookup lookup = new Lookup(domain, Type.A);
+        Record[] records = lookup.run();
 
-    private static boolean authenticate(SocketChannel clientChannel, ByteBuffer buffer) throws IOException {
+        if (records == null || records.length == 0) {
+            throw new IOException("Failed to resolve domain: " + domain);
+        }
+
+        for (Record record : records) {
+            if (record instanceof ARecord) {
+                ARecord aRecord = (ARecord) record;
+                String ipAddress = aRecord.getAddress().getHostAddress();
+                return InetAddress.getByName(ipAddress);
+            }
+        }
+
+        throw new IOException("No IPv4 address found for domain: " + domain);
+    }
+    private static boolean authenticate(SocketChannel clientChannel) throws IOException {
         // Читаем данные аутентификации
         ByteBuffer authData = ByteBuffer.allocate(513); // Максимальный размер логина и пароля
         int authBytesRead = clientChannel.read(authData);
@@ -242,7 +260,6 @@ public class ProxyServer {
         // Аутентификация успешна
         return true;
     }
-
     private static void transferData(SocketChannel clientChannel, SocketChannel remoteChannel) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(14336);
 
@@ -272,24 +289,4 @@ public class ProxyServer {
             }
         }
     }
-
-    private static InetAddress resolveDomain(String domain) throws IOException {
-        Lookup lookup = new Lookup(domain, Type.A);
-        Record[] records = lookup.run();
-
-        if (records == null || records.length == 0) {
-            throw new IOException("Failed to resolve domain: " + domain);
-        }
-
-        for (Record record : records) {
-            if (record instanceof ARecord) {
-                ARecord aRecord = (ARecord) record;
-                String ipAddress = aRecord.getAddress().getHostAddress();
-                return InetAddress.getByName(ipAddress);
-            }
-        }
-
-        throw new IOException("No IPv4 address found for domain: " + domain);
-    }
-
 }
