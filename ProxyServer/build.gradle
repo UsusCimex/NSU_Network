@@ -3,7 +3,7 @@ plugins {
     id 'application'
 }
 
-group = 'org.example'
+group = 'ru.nsu'
 version = '1.0-SNAPSHOT'
 mainClassName = 'ru.nsu.ProxyServer'
 

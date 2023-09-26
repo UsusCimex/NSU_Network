@@ -15,16 +15,14 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class ProxyServer {
     private static final String USERNAME = "login";
     private static final String PASSWORD = "password";
-    private static ExecutorService threadPool = Executors.newFixedThreadPool(5);
+    private static ExecutorService threadPool = Executors.newFixedThreadPool(10);
     private static Map<SocketChannel, SocketChannel> sockets = new HashMap<>();
     private static Selector selector;
     public static void main(String[] args) throws IOException {
@@ -43,6 +41,7 @@ public class ProxyServer {
 
         System.out.println("The proxy server is running on port " + proxyPort);
 
+        Set<SelectionKey> processedKeys = new HashSet<>();
         // Основной цикл сервера
         while (true) {
             int readyChannels = selector.select();
@@ -54,12 +53,27 @@ public class ProxyServer {
                 SelectionKey key = keyIterator.next();
                 keyIterator.remove();
 
-                if (key.isAcceptable()) {
-                    // Принимаем входящее соединение и запускаем обработку в отдельном потоке
-                    threadPool.execute( () -> acceptConnection(key) );
-                } else if (key.isReadable()) {
-                    // Транслируем соединение между remoteSocket и ClientSocket
-                    threadPool.execute( () -> readConnection(key) );
+                try {
+                    if (!key.isValid()) {
+                        // Проверяем, что ключ валиден
+                        continue;
+                    }
+
+                    if (key.isAcceptable()) {
+                        // Принимаем входящее соединение и запускаем обработку в отдельном потоке
+//                        threadPool.execute( () -> acceptConnection(key) );
+                        acceptConnection(key);
+                    } else if (key.isReadable()) {
+                        // Транслируем соединение между remoteSocket и ClientSocket
+//                        threadPool.execute( () -> readConnection(key) );
+                        readConnection(key);
+                    }
+                } catch (Exception e) {
+                    SocketChannel sc = (SocketChannel) key.channel();
+                    SocketChannel rc = sockets.get(sc);
+                    sockets.remove(sc);
+                    sockets.remove(rc);
+                    key.cancel();
                 }
             }
         }
@@ -78,7 +92,9 @@ public class ProxyServer {
                 remoteChannel.configureBlocking(false);
 
                 clientChannel.register(selector, SelectionKey.OP_READ);
+                remoteChannel.register(selector, SelectionKey.OP_READ);
                 sockets.put(clientChannel, remoteChannel);
+                sockets.put(remoteChannel, clientChannel);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -86,21 +102,21 @@ public class ProxyServer {
     }
     private static void readConnection(SelectionKey key) {
         try {
-            System.err.println("DEBUG1");
+//            System.err.println("DEBUG1");
             SocketChannel clientChannel = (SocketChannel) key.channel();
             SocketChannel remoteChannel = sockets.get(clientChannel);
             if (remoteChannel == null) {
                 clientChannel.close();
                 return;
             }
-            System.err.println("DEBUG2");
+//            System.err.println("DEBUG2");
             transferData(clientChannel, remoteChannel);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
     private static SocketChannel handleSocksRequest(SocketChannel clientChannel) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(256); // Размер буфера может быть изменен в зависимости от ваших требований.
+        ByteBuffer buffer = ByteBuffer.allocate(256);
 
         // Читаем данные от клиента в буфер.
         int bytesRead = clientChannel.read(buffer);
@@ -263,30 +279,23 @@ public class ProxyServer {
     private static void transferData(SocketChannel clientChannel, SocketChannel remoteChannel) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(14336);
 
-        while (true) {
-            // Читаем данные из клиентского канала и пишем их в буфер
-            int bytesRead = clientChannel.read(buffer);
-            if (bytesRead == -1) {
-                // Клиент закрыл соединение
-                break;
-            }
-            if (bytesRead > 0) {
-                buffer.flip(); // Переключаем буфер в режим чтения
-                remoteChannel.write(buffer); // Записываем данные в удаленный канал
-                buffer.compact(); // Освобождаем буфер для дополнительного чтения
-            }
+        int bytesRead = clientChannel.read(buffer);
+        if (bytesRead == -1) {
+            clientChannel.close();
+            remoteChannel.close();
+            sockets.remove(clientChannel);
+            sockets.remove(remoteChannel);
+            return;
+        }
+        buffer.flip();
 
-            // Читаем данные из удаленного канала и пишем их в буфер
-            bytesRead = remoteChannel.read(buffer);
-            if (bytesRead == -1) {
-                // Удаленный сервер закрыл соединение
-                break;
-            }
-            if (bytesRead > 0) {
-                buffer.flip(); // Переключаем буфер в режим чтения
-                clientChannel.write(buffer); // Записываем данные в клиентский канал
-                buffer.compact(); // Освобождаем буфер для дополнительного чтения
-            }
+        int bytesWrite = remoteChannel.write(buffer);
+        if (bytesWrite == -1) {
+            clientChannel.close();
+            remoteChannel.close();
+            sockets.remove(clientChannel);
+            sockets.remove(remoteChannel);
+            return;
         }
     }
 }
