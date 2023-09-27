@@ -22,8 +22,8 @@ import java.util.concurrent.Executors;
 public class ProxyServer {
     private static final String USERNAME = "login";
     private static final String PASSWORD = "password";
-    private static ExecutorService threadPool = Executors.newFixedThreadPool(10);
-    private static Map<SocketChannel, SocketChannel> sockets = new HashMap<>();
+    private static final ExecutorService threadPool = Executors.newFixedThreadPool(10);
+    private static final Map<SocketChannel, SocketChannel> sockets = new HashMap<>();
     private static Selector selector;
     public static void main(String[] args) throws IOException {
         if (args.length != 1) {
@@ -41,7 +41,6 @@ public class ProxyServer {
 
         System.out.println("The proxy server is running on port " + proxyPort);
 
-        Set<SelectionKey> processedKeys = new HashSet<>();
         // Основной цикл сервера
         while (true) {
             int readyChannels = selector.select();
@@ -238,8 +237,7 @@ public class ProxyServer {
         }
 
         for (Record record : records) {
-            if (record instanceof ARecord) {
-                ARecord aRecord = (ARecord) record;
+            if (record instanceof ARecord aRecord) {
                 String ipAddress = aRecord.getAddress().getHostAddress();
                 return InetAddress.getByName(ipAddress);
             }
