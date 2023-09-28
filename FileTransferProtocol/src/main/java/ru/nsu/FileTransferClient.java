@@ -27,19 +27,24 @@ public class FileTransferClient {
             out.write(fileToSend.getName().getBytes());
             out.writeLong(fileSize);
 
-            FileInputStream fileInputStream = new FileInputStream(fileToSend);
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = fileInputStream.read(buffer)) != -1) {
-                out.write(buffer, 0, bytesRead);
-            }
-            fileInputStream.close();
+            try(FileInputStream fileInputStream = new FileInputStream(fileToSend)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = fileInputStream.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+                fileInputStream.close();
 
-            byte[] answerBytes = new byte[3];
-            in.readFully(answerBytes);
-            String answer = new String(answerBytes);
-            System.out.println("Server answer: " + answer); // SUC = success, ERR - error
+                byte[] answerBytes = new byte[3];
+                in.readFully(answerBytes);
+                String answer = new String(answerBytes);
+                System.out.println("Server answer: " + answer); // SUC = success, ERR - error
+            } catch (IOException e) {
+                System.err.println("Error reading or sending the file: " + e.getMessage());
+                e.printStackTrace();
+            }
         } catch (IOException e) {
+            System.err.println("Error establishing or closing the connection: " + e.getMessage());
             e.printStackTrace();
         }
     }

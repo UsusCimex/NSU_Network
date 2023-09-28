@@ -12,7 +12,8 @@
   <component name="ChangeListManager">
     <list default="true" id="70e8ebde-25ad-492b-87ee-bef9d3749118" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../ProxyServer/src/main/java/ru/nsu/ProxyServer.java" beforeDir="false" afterPath="$PROJECT_DIR$/../ProxyServer/src/main/java/ru/nsu/ProxyServer.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/ru/nsu/FileTransferClient.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/ru/nsu/FileTransferClient.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/ru/nsu/FileTransferServer.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/ru/nsu/FileTransferServer.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -23,6 +24,18 @@
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
     </projectState>
+  </component>
+  <component name="ExternalProjectsManager">
+    <system id="GRADLE">
+      <state>
+        <projects_view>
+          <tree_state>
+            <expand />
+            <select />
+          </tree_state>
+        </projects_view>
+      </state>
+    </system>
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
@@ -55,7 +68,9 @@
     &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
     &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Program Files (x86)/GitHub/NSU_Network/FileTransferProtocol&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
@@ -64,6 +79,7 @@
     &quot;project.structure.last.edited&quot;: &quot;Artifacts&quot;,
     &quot;project.structure.proportion&quot;: &quot;0.15&quot;,
     &quot;project.structure.side.proportion&quot;: &quot;0.41954023&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.keymap&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
@@ -81,6 +97,13 @@
       <workItem from="1695204218779" duration="769000" />
       <workItem from="1695208559174" duration="3265000" />
       <workItem from="1695211900107" duration="1378000" />
+      <workItem from="1695808977975" duration="222000" />
+      <workItem from="1695809218289" duration="110000" />
+      <workItem from="1695809348034" duration="472000" />
+      <workItem from="1695813975533" duration="105000" />
+      <workItem from="1695814224422" duration="8000" />
+      <workItem from="1695814329037" duration="945000" />
+      <workItem from="1695865970902" duration="1343000" />
     </task>
     <servers />
   </component>
