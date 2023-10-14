@@ -8,7 +8,6 @@ import org.xbill.DNS.Type;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -16,13 +15,10 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class ProxyServer {
     private static final String USERNAME = "login";
     private static final String PASSWORD = "password";
-    private static final ExecutorService threadPool = Executors.newFixedThreadPool(10);
     private static final Map<SocketChannel, SocketChannel> sockets = new HashMap<>();
     private static Selector selector;
     public static void main(String[] args) throws IOException {
@@ -30,7 +26,7 @@ public class ProxyServer {
             System.out.println("Usage: java ProxyServer port");
             throw new RuntimeException("The parameters are set incorrectly");
         }
-        int proxyPort = Integer.parseInt(args[0]); // Порт прокси-сервера
+        int proxyPort = Integer.parseInt(args[0]); // Порт прокси-сервера default 1080
 
         ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
         serverSocketChannel.socket().bind(new InetSocketAddress(proxyPort));
@@ -60,59 +56,54 @@ public class ProxyServer {
 
                     if (key.isAcceptable()) {
                         // Принимаем входящее соединение и запускаем обработку в отдельном потоке
-//                        threadPool.execute( () -> acceptConnection(key) );
                         acceptConnection(key);
                     } else if (key.isReadable()) {
                         // Транслируем соединение между remoteSocket и ClientSocket
-//                        threadPool.execute( () -> readConnection(key) );
                         readConnection(key);
                     }
                 } catch (Exception e) {
                     SocketChannel sc = (SocketChannel) key.channel();
-                    SocketChannel rc = sockets.get(sc);
-                    sockets.remove(sc);
-                    sockets.remove(rc);
+                    if (sc != null) {
+                        SocketChannel rc = sockets.get(sc);
+                        sc.close();
+                        sockets.remove(sc);
+                        if (rc != null) {
+                            rc.close();
+                            sockets.remove(rc);
+                        }
+                    }
                     key.cancel();
                 }
             }
         }
     }
 
-    private static void acceptConnection(SelectionKey key) {
+    private static void acceptConnection(SelectionKey key) throws IOException {
         ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
-        try {
-            SocketChannel clientChannel = serverChannel.accept();
-            if (clientChannel != null) {
-                System.out.println("A new connection to the client has been accepted: " + clientChannel.getRemoteAddress());
+        SocketChannel clientChannel = serverChannel.accept();
+        if (clientChannel != null) {
+            System.out.println("A new connection to the client has been accepted: " + clientChannel.getRemoteAddress());
 
-                SocketChannel remoteChannel = handleSocksRequest(clientChannel);
+            SocketChannel remoteChannel = handleSocksRequest(clientChannel);
 
-                clientChannel.configureBlocking(false);
-                remoteChannel.configureBlocking(false);
+            clientChannel.configureBlocking(false);
+            remoteChannel.configureBlocking(false);
 
-                clientChannel.register(selector, SelectionKey.OP_READ);
-                remoteChannel.register(selector, SelectionKey.OP_READ);
-                sockets.put(clientChannel, remoteChannel);
-                sockets.put(remoteChannel, clientChannel);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+            clientChannel.register(selector, SelectionKey.OP_READ);
+            remoteChannel.register(selector, SelectionKey.OP_READ);
+            sockets.put(clientChannel, remoteChannel);
+            sockets.put(remoteChannel, clientChannel);
         }
     }
-    private static void readConnection(SelectionKey key) {
-        try {
-//            System.err.println("DEBUG1");
-            SocketChannel clientChannel = (SocketChannel) key.channel();
-            SocketChannel remoteChannel = sockets.get(clientChannel);
-            if (remoteChannel == null) {
-                clientChannel.close();
-                return;
-            }
-//            System.err.println("DEBUG2");
-            transferData(clientChannel, remoteChannel);
-        } catch (IOException e) {
-            e.printStackTrace();
+    private static void readConnection(SelectionKey key) throws IOException {
+        SocketChannel clientChannel = (SocketChannel) key.channel();
+        SocketChannel remoteChannel = sockets.get(clientChannel);
+        if (remoteChannel == null) {
+            clientChannel.close();
+            return;
         }
+
+        transferData(clientChannel, remoteChannel);
     }
     private static SocketChannel handleSocksRequest(SocketChannel clientChannel) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(256);
@@ -127,105 +118,100 @@ public class ProxyServer {
 
         SocketChannel remoteChannel = null;
         // Парсим SOCKS5 протокол.
-        try {
-            buffer.flip();
-            byte version = buffer.get();
-            byte authMethodsCount = buffer.get();
+        buffer.flip();
+        byte version = buffer.get();
+        byte authMethodsCount = buffer.get();
 
-            // Проверяем версию и количество методов аутентификации.
-            if (version != 5 || authMethodsCount == 0) {
-                // Версия или количество методов не поддерживается.
+        // Проверяем версию и количество методов аутентификации.
+        if (version != 5 || authMethodsCount == 0) {
+            // Версия или количество методов не поддерживается.
+            clientChannel.close();
+            throw new IOException("Session closed");
+        }
+
+        // Считываем список методов аутентификации, но мы не будем их анализировать, так как будем использовать анонимный доступ.
+        byte[] authMethods = new byte[authMethodsCount];
+        buffer.get(authMethods);
+
+        // Отправляем ответ клиенту, говоря ему, что мы поддерживаем анонимный доступ.
+        ByteBuffer responseBuffer = ByteBuffer.allocate(2);
+        responseBuffer.put((byte) 5); // Версия SOCKS5
+        responseBuffer.put((byte) 0); // Метод аутентификации: 0 - не требуется, 1 - GSSAPI, 2 - USERNAME/PASSWORD
+        responseBuffer.flip();
+        clientChannel.write(responseBuffer);
+
+        buffer = ByteBuffer.allocate(256);
+        // Считываем команды от клиента
+        bytesRead = clientChannel.read(buffer);
+        if (bytesRead == -1) {
+            clientChannel.close();
+            throw new IOException("Session closed");
+        }
+        buffer.flip();
+
+        byte ver = buffer.get(); // Версия протокола (5)
+        byte cmd = buffer.get(); // Команда 1 - CONNECT, 2 - BIND, 3 - UDP ASSOCIATE
+        byte reserved = buffer.get(); // Зарезервировано, должно быть 0
+        byte addressType = buffer.get(); // Тип адреса 1 - IPv4, 3 - IPv6, 2 - доменное имя
+
+        InetAddress destinationAddress;
+        // В зависимости от типа адреса, вы можете обработать соответствующий запрос.
+        if (addressType == 1) {
+            // IPv4 адрес
+            if (buffer.remaining() >= 4) {
+                byte[] ipAddress = new byte[4];
+                buffer.get(ipAddress); // IP адрес
+                destinationAddress = InetAddress.getByAddress(ipAddress);
+            } else {
+                // Обработка недостаточного количества данных
                 clientChannel.close();
                 throw new IOException("Session closed");
             }
-
-            // Считываем список методов аутентификации, но мы не будем их анализировать, так как будем использовать анонимный доступ.
-            byte[] authMethods = new byte[authMethodsCount];
-            buffer.get(authMethods);
-
-            // Отправляем ответ клиенту, говоря ему, что мы поддерживаем анонимный доступ.
-            ByteBuffer responseBuffer = ByteBuffer.allocate(2);
-            responseBuffer.put((byte) 5); // Версия SOCKS5
-            responseBuffer.put((byte) 0); // Метод аутентификации: 0 - не требуется, 1 - GSSAPI, 2 - USERNAME/PASSWORD
-            responseBuffer.flip();
-            clientChannel.write(responseBuffer);
-
-            buffer = ByteBuffer.allocate(256);
-            // Считываем команды от клиента
-            bytesRead = clientChannel.read(buffer);
-            if (bytesRead == -1) {
-                clientChannel.close();
-                throw new IOException("Session closed");
-            }
-            buffer.flip();
-
-            byte ver = buffer.get(); // Версия протокола (5)
-            byte cmd = buffer.get(); // Команда 1 - CONNECT, 2 - BIND, 3 - UDP ASSOCIATE
-            byte reserved = buffer.get(); // Зарезервировано, должно быть 0
-            byte addressType = buffer.get(); // Тип адреса 1 - IPv4, 3 - IPv6, 2 - доменное имя
-
-            InetAddress destinationAddress;
-            // В зависимости от типа адреса, вы можете обработать соответствующий запрос.
-            if (addressType == 1) {
-                // IPv4 адрес
-                if (buffer.remaining() >= 4) {
-                    byte[] ipAddress = new byte[4];
-                    buffer.get(ipAddress); // IP адрес
-                    destinationAddress = InetAddress.getByAddress(ipAddress);
-                } else {
-                    // Обработка недостаточного количества данных
-                    clientChannel.close();
-                    throw new IOException("Session closed");
-                }
-            } else if (addressType == 3) {
-                // Доменное имя
-                if (buffer.remaining() >= 1) {
-                    int domainLength = buffer.get() & 0xFF; // Здесь мы преобразуем в положительное значение
-                    if (buffer.remaining() >= domainLength) {
-                        byte[] domainBytes = new byte[domainLength];
-                        buffer.get(domainBytes);
-                        String domain = new String(domainBytes, StandardCharsets.US_ASCII);
-                        System.out.println("Client(" + clientChannel.getRemoteAddress() + ") is trying to reach a DNS address: " + domain);
-                        destinationAddress = resolveDomain(domain);
-                    } else {
-                        // Обработка недостаточного количества данных
-                        clientChannel.close();
-                        throw new IOException("Session closed");
-                    }
+        } else if (addressType == 3) {
+            // Доменное имя
+            if (buffer.remaining() >= 1) {
+                int domainLength = buffer.get() & 0xFF; // Здесь мы преобразуем в положительное значение
+                if (buffer.remaining() >= domainLength) {
+                    byte[] domainBytes = new byte[domainLength];
+                    buffer.get(domainBytes);
+                    String domain = new String(domainBytes, StandardCharsets.US_ASCII);
+                    System.out.println("Client(" + clientChannel.getRemoteAddress() + ") is trying to reach a DNS address: " + domain);
+                    destinationAddress = resolveDomain(domain);
                 } else {
                     // Обработка недостаточного количества данных
                     clientChannel.close();
                     throw new IOException("Session closed");
                 }
             } else {
-                // Неподдерживаемый тип адреса, 4 - IPv6
-                System.out.println("Client(" + clientChannel.getRemoteAddress() + ") have unsupported address type: " + addressType);
+                // Обработка недостаточного количества данных
                 clientChannel.close();
                 throw new IOException("Session closed");
             }
-
-            int destinationPort = buffer.getShort(); // Порт
-            System.out.println("Client(" + clientChannel.getRemoteAddress() + ") went to the address: " + destinationAddress + ":" + destinationPort);
-
-            // Устанавливаем соединение с удаленным сервером
-            remoteChannel = SocketChannel.open();
-            remoteChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
-
-            // Отправляем ответ клиенту
-            responseBuffer = ByteBuffer.allocate(10); //IPv4 - 10 bytes, IPv6 - 22 bytes
-            responseBuffer.put((byte) 5); // Версия SOCKS5
-            responseBuffer.put((byte) 0); // 0 - Успех, 1 - ошибка SOCKS сервера
-            responseBuffer.put((byte) 0); // Зарезервировано
-            responseBuffer.put((byte) 1); // Тип последующего адреса, 1 - IPv4, 3 - DNS
-            responseBuffer.put(destinationAddress.getAddress()); // Выданный сервером адрес
-            responseBuffer.putShort((short) destinationPort); // Выданный сервером порт
-            responseBuffer.flip();
-            clientChannel.write(responseBuffer);
-        } catch (BufferUnderflowException e) {
-            // Обработка ошибки BufferUnderflowException
-            e.printStackTrace();
+        } else {
+            // Неподдерживаемый тип адреса, 4 - IPv6
+            System.out.println("Client(" + clientChannel.getRemoteAddress() + ") have unsupported address type: " + addressType);
             clientChannel.close();
+            throw new IOException("Session closed");
         }
+
+        int destinationPort = buffer.getShort(); // Порт
+        System.out.println("Client(" + clientChannel.getRemoteAddress() + ") went to the address: " + destinationAddress + ":" + destinationPort);
+
+        // Устанавливаем соединение с удаленным сервером
+        remoteChannel = SocketChannel.open();
+        remoteChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
+
+        // Отправляем ответ клиенту
+        responseBuffer = ByteBuffer.allocate(10); //IPv4 - 10 bytes, IPv6 - 22 bytes
+        responseBuffer.put((byte) 5); // Версия SOCKS5
+        responseBuffer.put((byte) 0); // 0 - Успех, 1 - ошибка SOCKS сервера
+        responseBuffer.put((byte) 0); // Зарезервировано
+        responseBuffer.put((byte) 1); // Тип последующего адреса, 1 - IPv4, 3 - DNS
+        responseBuffer.put(destinationAddress.getAddress()); // Выданный сервером адрес
+        responseBuffer.putShort((short) destinationPort); // Выданный сервером порт
+        responseBuffer.flip();
+        clientChannel.write(responseBuffer);
+
         return remoteChannel;
     }
     private static InetAddress resolveDomain(String domain) throws IOException {
