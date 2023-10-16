@@ -5,7 +5,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,7 +17,6 @@ import ru.nsu.opentrip.Feature;
 import ru.nsu.opentrip.FeatureData;
 import ru.nsu.opentrip.Properties;
 import ru.nsu.opentripinfo.FeatureInfoData;
-import ru.nsu.opentripinfo.PlaceInfo;
 import ru.nsu.opentripinfo.WikipediaExtracts;
 import ru.nsu.openweather.WeatherData;
 
@@ -28,8 +27,8 @@ public class APIWorker {
 
     private static final String GEOCODE_API_URL = "https://graphhopper.com/api/1/geocode?q={ADDRESS}&locale=ru&key={API_KEY}";
     private static final String OPENWEATHER_API_URL = "https://api.openweathermap.org/data/2.5/weather?lat={LAT}&lon={LON}&appid={API_KEY}";
-    private static final String OPENTRIP_API_URL = "http://api.opentripmap.com/0.1/ru/places/bbox?lon_min={LON_MIN}&lat_min={LAT_MIN}&lon_max={LON_MAX}&lat_max={LAT_MAX}&format=geojson&apikey={API_KEY}";
-    private static final String OPENTRIP_INFO_API_URL = "http://api.opentripmap.com/0.1/ru/places/xid/{XID}?apikey={API_KEY}";
+    private static final String OPENTRIP_API_URL = "https://api.opentripmap.com/0.1/ru/places/bbox?lon_min={LON_MIN}&lat_min={LAT_MIN}&lon_max={LON_MAX}&lat_max={LAT_MAX}&format=geojson&apikey={API_KEY}";
+    private static final String OPENTRIP_INFO_API_URL = "https://api.opentripmap.com/0.1/ru/places/xid/{XID}?apikey={API_KEY}";
     // Метод для выполнения HTTP GET-запросов
     private String sendGetRequest(String url) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
@@ -37,7 +36,7 @@ public class APIWorker {
 
         int responseCode = connection.getResponseCode();
         if (responseCode == HttpURLConnection.HTTP_OK) {
-            BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream(), Charset.forName("UTF-8")));
+            BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8));
 
             String inputLine;
             StringBuilder response = new StringBuilder();
@@ -58,7 +57,7 @@ public class APIWorker {
         List<Location> locations = new ArrayList<>();
         try {
             String apiUrl = GEOCODE_API_URL
-                    .replace("{ADDRESS}", URLEncoder.encode(address, "UTF-8"))
+                    .replace("{ADDRESS}", URLEncoder.encode(address, StandardCharsets.UTF_8))
                     .replace("{API_KEY}", GEOCODE_API_KEY);
             System.out.println("GEOCODE_URL: " + apiUrl);
 

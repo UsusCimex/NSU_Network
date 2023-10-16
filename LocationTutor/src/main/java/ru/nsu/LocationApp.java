@@ -11,7 +11,6 @@ import ru.nsu.opentrip.Properties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 public class LocationApp extends Application {
     private final APIWorker apiWorker = new APIWorker();

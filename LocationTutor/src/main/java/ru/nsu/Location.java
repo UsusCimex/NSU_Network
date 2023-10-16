@@ -1,9 +1,9 @@
 package ru.nsu;
 
 public class Location {
-    private double lat;
-    private double lon;
-    private String name;
+    private final double lat;
+    private final double lon;
+    private final String name;
     private String weather;
     private String InterestingPlaces;
 
