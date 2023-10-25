@@ -16,6 +16,7 @@ import ru.nsu.openweather.WeatherData;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class LocationApp extends Application {
     private OkHttpClient client;
@@ -153,7 +154,6 @@ public class LocationApp extends Application {
                         Platform.runLater(() -> {
                             resultList.getItems().clear();
                             resultList.getItems().add("Погода: " + weather);
-                            searchButton.setDisable(false);
                         });
 
                         handlePlaces(selectedLocation);
@@ -165,22 +165,22 @@ public class LocationApp extends Application {
                     Platform.runLater(() -> {
                         resultList.getItems().clear();
                         resultList.getItems().add("Ошибка при получении погоды: " + response.code());
-                        searchButton.setDisable(false);
                     });
+
+                    handlePlaces(selectedLocation);
                 }
             }
         };
 
         apiWorker.getWeatherByCoordinates(selectedLocation.getLat(), selectedLocation.getLon(), weatherCallback);
     }
+
     private void handlePlaces(Location location) {
-        searchButton.setDisable(true);
         Callback placesCallback = new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 e.printStackTrace();
                 Platform.runLater(() -> {
-                    resultList.getItems().clear();
                     resultList.getItems().add("Ошибка при получении интересных мест");
                     searchButton.setDisable(false);
                 });
@@ -203,15 +203,14 @@ public class LocationApp extends Application {
                                     throw new RuntimeException(e);
                                 }
                             }
-                            searchButton.setDisable(false);
                         }
+                        searchButton.setDisable(false);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
                 } else {
                     // Обработка неуспешного ответа
                     Platform.runLater(() -> {
-                        resultList.getItems().clear();
                         resultList.getItems().add("Ошибка при получении интересных мест: " + response.code());
                         searchButton.setDisable(false);
                     });
