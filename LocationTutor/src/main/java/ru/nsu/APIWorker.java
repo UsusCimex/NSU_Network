@@ -2,20 +2,8 @@ package ru.nsu;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
-import ru.nsu.geocode.GeoData;
-import ru.nsu.geocode.Hit;
-import ru.nsu.geocode.Point;
-import ru.nsu.opentrip.Feature;
-import ru.nsu.opentrip.FeatureData;
-import ru.nsu.opentrip.Properties;
-import ru.nsu.opentripinfo.FeatureInfoData;
-import ru.nsu.opentripinfo.WikipediaExtracts;
-import ru.nsu.openweather.WeatherData;
 
 public class APIWorker {
     private static final String OPENWEATHER_API_KEY = "8a7a08eb796672a72dc63b9f3930fe8c";

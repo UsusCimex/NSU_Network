@@ -1,6 +1,5 @@
 package ru.nsu;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -10,19 +9,13 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import okhttp3.*;
 import ru.nsu.geocode.GeoData;
-import ru.nsu.geocode.Hit;
-import ru.nsu.geocode.Point;
-import ru.nsu.opentrip.Feature;
 import ru.nsu.opentrip.FeatureData;
 import ru.nsu.opentrip.Properties;
 import ru.nsu.opentripinfo.FeatureInfoData;
 import ru.nsu.openweather.WeatherData;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.*;
 
 public class LocationApp extends Application {
     private OkHttpClient client;
@@ -180,7 +173,6 @@ public class LocationApp extends Application {
 
         apiWorker.getWeatherByCoordinates(selectedLocation.getLat(), selectedLocation.getLon(), weatherCallback);
     }
-
     private void handlePlaces(Location location) {
         Callback placesCallback = new Callback() {
             @Override
