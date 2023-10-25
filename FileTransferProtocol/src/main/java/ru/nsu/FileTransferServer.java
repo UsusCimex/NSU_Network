@@ -50,7 +50,8 @@ public class FileTransferServer {
 
         @Override
         public void run() {
-            try (DataInputStream in = new DataInputStream(clientSocket.getInputStream());
+            try (clientSocket;
+                 DataInputStream in = new DataInputStream(clientSocket.getInputStream());
                  DataOutputStream out = new DataOutputStream(clientSocket.getOutputStream())) {
 
                 short fileNameLength = in.readShort();
@@ -60,6 +61,11 @@ public class FileTransferServer {
                 String filePath = UPLOAD_DIR + fileName;
                 long fileSize = in.readLong();
                 File outputFile = new File(filePath);
+
+                if (!outputFile.toPath().startsWith(UPLOAD_DIR)) {
+                    System.err.println("The file must be in the directory " + UPLOAD_DIR);
+                    return;
+                }
 
                 int index = 1;
                 while (outputFile.exists()) {
@@ -111,12 +117,6 @@ public class FileTransferServer {
             } catch (IOException e) {
                 System.err.println("An error occurred while processing the client request: " + e.getMessage());
                 e.printStackTrace();
-            } finally {
-                try {
-                    clientSocket.close();
-                } catch (IOException e) {
-                    System.err.println("Error while closing the client socket");
-                }
             }
         }
     }
