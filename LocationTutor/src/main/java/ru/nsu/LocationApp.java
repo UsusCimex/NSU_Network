@@ -15,8 +15,9 @@ import ru.nsu.opentripinfo.FeatureInfoData;
 import ru.nsu.openweather.WeatherData;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CompletableFuture;
 
 public class LocationApp extends Application {
     private OkHttpClient client;
@@ -193,17 +194,25 @@ public class LocationApp extends Application {
                         String responseString = response.body().string();
                         List<Properties> places = FeatureData.parseJSON(responseString);
 
+                        int countPlaces = 5;
+                        places = places.subList(0, countPlaces); //Ограничиваем список мест до 5
+                        ArrayList<CompletableFuture<String>> futures = new ArrayList<>(countPlaces);
+
                         Platform.runLater( () -> resultList.getItems().add("Интересные места:") );
                         for (Properties place : places) {
+                            CompletableFuture<String> future = new CompletableFuture<>();
                             if (place.getName() != null && !place.getName().isEmpty()) {
-                                Platform.runLater( () -> handlePlaceInfo(place) );
-                                try {
-                                    Thread.sleep(300);
-                                } catch (InterruptedException e) {
-                                    throw new RuntimeException(e);
-                                }
+                                handlePlaceInfo(place, future);
                             }
+                            futures.add(future);
                         }
+                        CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+                        allOf.join();
+
+                        for (CompletableFuture<String> future : futures) {
+                            future.thenAccept(placeInfo -> Platform.runLater(() -> resultList.getItems().add(placeInfo)));
+                        }
+
                         searchButton.setDisable(false);
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -225,7 +234,7 @@ public class LocationApp extends Application {
         );
     }
 
-    private void handlePlaceInfo(Properties place) {
+    private void handlePlaceInfo(Properties place, CompletableFuture<String> future) {
         Callback placeCallback = new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
@@ -238,8 +247,7 @@ public class LocationApp extends Application {
                     try {
                         String responseString = response.body().string();
                         String placeInfo = FeatureInfoData.parseJSON(responseString);
-
-                        Platform.runLater(() -> resultList.getItems().add(placeInfo) );
+                        future.complete(placeInfo);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
