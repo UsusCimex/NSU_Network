@@ -174,6 +174,7 @@ public class LocationApp extends Application {
         apiWorker.getWeatherByCoordinates(selectedLocation.getLat(), selectedLocation.getLon(), weatherCallback);
     }
     private void handlePlaces(Location location) {
+        searchButton.setDisable(true);
         Callback placesCallback = new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
@@ -192,20 +193,18 @@ public class LocationApp extends Application {
                         String responseString = response.body().string();
                         List<Properties> places = FeatureData.parseJSON(responseString);
 
-                        Platform.runLater(() -> {
-                            resultList.getItems().add("Интересные места:");
-                            for (Properties place : places) {
-                                if (place.getName() != null && !place.getName().isEmpty()) {
-                                    handlePlaceInfo(place);
-                                    try {
-                                        Thread.sleep(300);
-                                    } catch (InterruptedException e) {
-                                        throw new RuntimeException(e);
-                                    }
+                        Platform.runLater( () -> resultList.getItems().add("Интересные места:") );
+                        for (Properties place : places) {
+                            if (place.getName() != null && !place.getName().isEmpty()) {
+                                Platform.runLater( () -> handlePlaceInfo(place) );
+                                try {
+                                    Thread.sleep(300);
+                                } catch (InterruptedException e) {
+                                    throw new RuntimeException(e);
                                 }
                             }
                             searchButton.setDisable(false);
-                        });
+                        }
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
