@@ -1,4 +1,6 @@
 package ru.nsu;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -6,15 +8,27 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import okhttp3.*;
+import ru.nsu.geocode.GeoData;
+import ru.nsu.geocode.Hit;
+import ru.nsu.geocode.Point;
+import ru.nsu.opentrip.Feature;
+import ru.nsu.opentrip.FeatureData;
 import ru.nsu.opentrip.Properties;
+import ru.nsu.opentripinfo.FeatureInfoData;
+import ru.nsu.openweather.WeatherData;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.*;
 
 public class LocationApp extends Application {
-    private final APIWorker apiWorker = new APIWorker();
+    private OkHttpClient client;
+    private APIWorker apiWorker;
     private Button searchButton;
+    private ListView<String> resultList;
     public static void main(String[] args) {
         launch(args);
     }
@@ -23,10 +37,28 @@ public class LocationApp extends Application {
     public void start(Stage primaryStage) {
         primaryStage.setTitle("Location Search App");
 
+        client = new OkHttpClient();
+        apiWorker = new APIWorker(client);
+
         VBox vbox = createUI();
 
         Scene scene = new Scene(vbox, 400, 400);
         primaryStage.setScene(scene);
+
+        primaryStage.setOnCloseRequest(event -> {
+            try {
+                // Вызов close() при закрытии окна приложения
+                if (client != null) {
+                    client.dispatcher().executorService().shutdown();
+                    client.connectionPool().evictAll();
+                    if (client.cache() != null) {
+                        client.cache().close();
+                    }
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
 
         primaryStage.show();
     }
@@ -38,112 +70,195 @@ public class LocationApp extends Application {
         Label label = new Label("Введите название местоположения:");
         TextField locationInput = new TextField();
         searchButton = new Button("Поиск");
+        resultList = new ListView<>();
 
-        ListView<String> resultList = new ListView<>();
         resultList.setPrefHeight(200);
 
-        searchButton.setOnAction(e -> handleSearchButton(locationInput, resultList));
+        searchButton.setOnAction(e -> handleSearchButton(locationInput));
 
         vbox.getChildren().addAll(label, locationInput, searchButton, resultList);
 
         return vbox;
     }
 
-    private void handleSearchButton(TextField locationInput, ListView<String> resultList) {
+    private void handleSearchButton(TextField locationInput) {
         // Очистка и обработка запроса
         String inputText = locationInput.getText();
         Platform.runLater(() -> resultList.getItems().clear());
         searchButton.setDisable(true);
         resultList.setOnMouseClicked(null);
 
-        CompletableFuture.supplyAsync(() -> apiWorker.getLocationsByAddress(inputText))
-                .thenAccept(locations -> {
-                    Platform.runLater(() -> {
-                                if (locations.isEmpty()) {
-                                    resultList.getItems().add("Нет результатов");
-                                } else {
-                                    for (Location location : locations) {
-                                        resultList.getItems().add(location.getName());
-                                    }
-                                }
-                            });
-                    searchButton.setDisable(false);
+        Callback locationsCallback = new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+            }
 
-                    // Обработка щелчка на элементе resultList
-                    resultList.setOnMouseClicked(event -> handleResultListClick(locations, resultList));
-                });
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String responseString = response.body().string();
+                        List<Location> locations = GeoData.parseJSON(responseString);
+
+                        Platform.runLater(() -> {
+                            resultList.getItems().clear();
+                            if (locations.isEmpty()) {
+                                resultList.getItems().add("Нет результатов");
+                            } else {
+                                for (Location location : locations) {
+                                    resultList.getItems().add(location.getName());
+                                }
+                            }
+                            searchButton.setDisable(false);
+
+                            // Обработка щелчка на элементе resultList
+                            resultList.setOnMouseClicked(event -> handleResultListClick(locations));
+                        });
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    // Обработка неуспешного ответа
+                    Platform.runLater(() -> {
+                        resultList.getItems().clear();
+                        resultList.getItems().add("Ошибка: " + response.code());
+                        searchButton.setDisable(false);
+                    });
+                }
+            }
+        };
+
+        apiWorker.getLocationsByAddress(inputText, locationsCallback);
     }
 
-    private void handleResultListClick(List<Location> locations, ListView<String> resultList) {
-        resultList.setOnMouseClicked(null);
+    private void handleResultListClick(List<Location> locations) {
+        resultList.setOnMouseClicked(null); // Отключаем обработчик, чтобы избежать множественных кликов
         searchButton.setDisable(true);
+
         int selectedIndex = resultList.getSelectionModel().getSelectedIndex();
         if (selectedIndex < 0 || selectedIndex >= locations.size()) {
+            searchButton.setDisable(false);
             return;
         }
 
         Location selectedLocation = locations.get(selectedIndex);
 
-        CompletableFuture<String> weatherFuture = CompletableFuture.supplyAsync(() ->
-                apiWorker.getWeatherByCoordinates(selectedLocation.getLat(), selectedLocation.getLon())
-        );
-
-        CompletableFuture<List<Properties>> placesFuture = CompletableFuture.supplyAsync(() ->
-                apiWorker.getInterestingPlacesByCoordinates(
-                        selectedLocation.getLon() - 0.01, selectedLocation.getLat() - 0.01,
-                        selectedLocation.getLon() + 0.01, selectedLocation.getLat() + 0.01
-                )
-        );
-
-        CompletableFuture.allOf(weatherFuture, placesFuture)
-                .thenAcceptAsync(ignored -> handleWeatherAndPlaces(weatherFuture.join(), placesFuture.join(), resultList));
-    }
-
-    private void handleWeatherAndPlaces(String weather, List<Properties> places, ListView<String> resultList) {
-        Platform.runLater(() -> {
-            resultList.getItems().clear();
-            resultList.getItems().add("Погода: " + weather);
-        });
-
-        if (!places.isEmpty()) {
-            Platform.runLater(() -> resultList.getItems().add("Интересные места:"));
-            ExecutorService executor = Executors.newFixedThreadPool(5);
-
-            List<CompletableFuture<String>> futures = new ArrayList<>();
-            for (Properties place : places) {
-                if (place.getName() != null && !place.getName().isEmpty()) {
-                    CompletableFuture<String> placeInfoFuture = CompletableFuture.supplyAsync(() -> {
-                        String placeInfo = "- " + place.getName();
-                        try {
-                            Thread.sleep(1000); // Задержка между запросами, 1 сек
-                            String info = apiWorker.getInfoAboutPlace(place.getXid());
-                            if (info != null) {
-                                placeInfo += "\n-- " + info;
-                            }
-                            return placeInfo;
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                            return null;
-                        }
-                    }, executor);
-                    placeInfoFuture.thenAccept(placeInfo -> {
-                        if (placeInfo != null && !placeInfo.isEmpty()) {
-                            Platform.runLater(() -> resultList.getItems().add(placeInfo));
-                        }
-                    });
-                    futures.add(placeInfoFuture);
-                }
+        Callback weatherCallback = new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
             }
 
-            CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String responseString = response.body().string();
+                        String weather = WeatherData.parseJSON(responseString);
 
-            allOf.thenRun(() -> {
-                // Все CompletableFuture завершились
-                executor.shutdown();
-                searchButton.setDisable(false);
-            });
-        } else {
-            Platform.runLater(() -> resultList.getItems().add("Нет интересных мест"));
-        }
+                        Platform.runLater(() -> {
+                            resultList.getItems().clear();
+                            resultList.getItems().add("Погода: " + weather);
+                            searchButton.setDisable(false);
+                        });
+
+                        handlePlaces(selectedLocation);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    // Обработка неуспешного ответа
+                    Platform.runLater(() -> {
+                        resultList.getItems().clear();
+                        resultList.getItems().add("Ошибка при получении погоды: " + response.code());
+                        searchButton.setDisable(false);
+                    });
+                }
+            }
+        };
+
+        apiWorker.getWeatherByCoordinates(selectedLocation.getLat(), selectedLocation.getLon(), weatherCallback);
+    }
+
+    private void handlePlaces(Location location) {
+        Callback placesCallback = new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+                Platform.runLater(() -> {
+                    resultList.getItems().clear();
+                    resultList.getItems().add("Ошибка при получении интересных мест");
+                    searchButton.setDisable(false);
+                });
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String responseString = response.body().string();
+                        List<Properties> places = FeatureData.parseJSON(responseString);
+
+                        Platform.runLater(() -> {
+                            resultList.getItems().add("Интересные места:");
+                            for (Properties place : places) {
+                                if (place.getName() != null && !place.getName().isEmpty()) {
+                                    handlePlaceInfo(place);
+                                    try {
+                                        Thread.sleep(300);
+                                    } catch (InterruptedException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                }
+                            }
+                            searchButton.setDisable(false);
+                        });
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    // Обработка неуспешного ответа
+                    Platform.runLater(() -> {
+                        resultList.getItems().clear();
+                        resultList.getItems().add("Ошибка при получении интересных мест: " + response.code());
+                        searchButton.setDisable(false);
+                    });
+                }
+            }
+        };
+
+        apiWorker.getInterestingPlacesByCoordinates(
+                location.getLon() - 0.01, location.getLat() - 0.01,
+                location.getLon() + 0.01, location.getLat() + 0.01,
+                placesCallback
+        );
+    }
+
+    private void handlePlaceInfo(Properties place) {
+        Callback placeCallback = new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                System.err.println("[FAIL] handlePlaceInfo");
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String responseString = response.body().string();
+                        String placeInfo = FeatureInfoData.parseJSON(responseString);
+
+                        Platform.runLater(() -> resultList.getItems().add(placeInfo) );
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    System.err.println("[RESPONSE_ERROR] Failed with code: " + response.code());
+                }
+            }
+        };
+
+        apiWorker.getInfoAboutPlace(place.getXid(), placeCallback);
     }
 }

@@ -1,6 +1,8 @@
 package ru.nsu.opentripinfo;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FeatureInfoData {
@@ -17,6 +19,20 @@ public class FeatureInfoData {
     private Preview preview;
     private Point point;
     private WikipediaExtracts wikipedia_extracts;
+
+    public static String parseJSON(String str) throws JsonProcessingException {
+        String res = null;
+        ObjectMapper objectMapper = new ObjectMapper();
+        FeatureInfoData featureInfoData = objectMapper.readValue(str, FeatureInfoData.class);
+        if (featureInfoData.name != null && !featureInfoData.name.isEmpty()) {
+            res = "- " + featureInfoData.name;
+        }
+        WikipediaExtracts wikipediaExtracts = featureInfoData.getWikipedia_extracts();
+        if (wikipediaExtracts != null) {
+            res += "\n-- " + wikipediaExtracts.getText();
+        }
+        return res;
+    }
 
     public WikipediaExtracts getWikipedia_extracts() {
         return wikipedia_extracts;

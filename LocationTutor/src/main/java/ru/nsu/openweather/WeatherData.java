@@ -1,6 +1,8 @@
 package ru.nsu.openweather;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -19,6 +21,15 @@ public class WeatherData {
     private int id;
     private String name;
     private int cod;
+
+    public static String parseJSON(String str) throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        WeatherData weatherData = objectMapper.readValue(str, WeatherData.class);
+        String main = weatherData.getWeather().get(0).getMain();
+        String description = weatherData.getWeather().get(0).getDescription();
+        String weather = main + " (" + description + ")";
+        return weather;
+    }
 
     public Coord getCoord() {
         return coord;

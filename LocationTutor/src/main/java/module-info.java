@@ -3,6 +3,7 @@ module ru.nsu {
     requires javafx.fxml;
     requires com.fasterxml.jackson.annotation;
     requires com.fasterxml.jackson.databind;
+    requires okhttp3;
 
     opens ru.nsu to javafx.fxml;
     exports ru.nsu;
