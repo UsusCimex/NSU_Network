@@ -18,12 +18,14 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 public class LocationApp extends Application {
     private OkHttpClient client;
     private APIWorker apiWorker;
     private Button searchButton;
     private ListView<String> resultList;
+    private static int MAX_PLACE_COUNT = 5;
     public static void main(String[] args) {
         launch(args);
     }
@@ -138,6 +140,10 @@ public class LocationApp extends Application {
         }
 
         Location selectedLocation = locations.get(selectedIndex);
+        resultList.getItems().clear();
+
+        ArrayList<CompletableFuture<String>> futures = new ArrayList<>();
+        futures.add(new CompletableFuture<String>());
 
         Callback weatherCallback = new Callback() {
             @Override
@@ -152,31 +158,18 @@ public class LocationApp extends Application {
                         String responseString = response.body().string();
                         String weather = WeatherData.parseJSON(responseString);
 
-                        Platform.runLater(() -> {
-                            resultList.getItems().clear();
-                            resultList.getItems().add("Погода: " + weather);
-                        });
-
-                        handlePlaces(selectedLocation);
+                        futures.get(0).complete("Погода: " + weather);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
                 } else {
-                    // Обработка неуспешного ответа
-                    Platform.runLater(() -> {
-                        resultList.getItems().clear();
-                        resultList.getItems().add("Ошибка при получении погоды: " + response.code());
-                    });
-
-                    handlePlaces(selectedLocation);
+                    futures.get(0).complete("Ошибка при получении погоды, код ошибки: " + response.code());
                 }
             }
         };
 
         apiWorker.getWeatherByCoordinates(selectedLocation.getLat(), selectedLocation.getLon(), weatherCallback);
-    }
 
-    private void handlePlaces(Location location) {
         Callback placesCallback = new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
@@ -194,33 +187,44 @@ public class LocationApp extends Application {
                         String responseString = response.body().string();
                         List<Properties> places = FeatureData.parseJSON(responseString);
 
-                        int countPlaces = 5;
-                        places = places.subList(0, countPlaces); //Ограничиваем список мест до 5
-                        ArrayList<CompletableFuture<String>> futures = new ArrayList<>(countPlaces);
+                        futures.add(new CompletableFuture<>());
+                        futures.get(1).complete("Интересные места:");
 
-                        Platform.runLater( () -> resultList.getItems().add("Интересные места:") );
+                        int placeCount = 0;
                         for (Properties place : places) {
-                            CompletableFuture<String> future = new CompletableFuture<>();
                             if (place.getName() != null && !place.getName().isEmpty()) {
+                                CompletableFuture<String> future = new CompletableFuture<>();
                                 handlePlaceInfo(place, future);
+                                futures.add(future);
+                                placeCount++;
+                                if (placeCount >= MAX_PLACE_COUNT) break;
                             }
-                            futures.add(future);
                         }
+
                         CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-                        allOf.join();
+                        allOf.thenAccept(voidResult -> {
+                            for (CompletableFuture<String> future : futures) {
+                                try {
+                                    String text = future.get(); // ожидание завершения всех CompletableFuture
+                                    Platform.runLater(() -> resultList.getItems().add(text));
+                                } catch (InterruptedException | ExecutionException e) {
+                                    System.err.println("CompletableFuture error!...");
+                                    Platform.runLater(() -> {
+                                        resultList.getItems().clear();
+                                        resultList.getItems().add("Ошибка при получении мест...");
+                                    });
+                                }
+                            }
 
-                        for (CompletableFuture<String> future : futures) {
-                            future.thenAccept(placeInfo -> Platform.runLater(() -> resultList.getItems().add(placeInfo)));
-                        }
-
-                        searchButton.setDisable(false);
+                            searchButton.setDisable(false);
+                        });
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
                 } else {
                     // Обработка неуспешного ответа
                     Platform.runLater(() -> {
-                        resultList.getItems().add("Ошибка при получении интересных мест: " + response.code());
+                        resultList.getItems().add("Ошибка при получении интересных мест, код ошибки: " + response.code());
                         searchButton.setDisable(false);
                     });
                 }
@@ -228,8 +232,8 @@ public class LocationApp extends Application {
         };
 
         apiWorker.getInterestingPlacesByCoordinates(
-                location.getLon() - 0.01, location.getLat() - 0.01,
-                location.getLon() + 0.01, location.getLat() + 0.01,
+                selectedLocation.getLon() - 0.01, selectedLocation.getLat() - 0.01,
+                selectedLocation.getLon() + 0.01, selectedLocation.getLat() + 0.01,
                 placesCallback
         );
     }
