@@ -62,8 +62,9 @@ public class FileTransferServer {
                 long fileSize = in.readLong();
                 File outputFile = new File(filePath);
 
-                if (!outputFile.toPath().startsWith(UPLOAD_DIR)) {
+                if (!outputFile.toPath().normalize().startsWith(UPLOAD_DIR)) {
                     System.err.println("The file must be in the directory " + UPLOAD_DIR);
+                    out.write("ERR".getBytes(StandardCharsets.UTF_8));
                     return;
                 }
 
