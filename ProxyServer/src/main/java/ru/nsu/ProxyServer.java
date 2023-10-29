@@ -62,6 +62,9 @@ public class ProxyServer {
                         readConnection(key);
                     }
                 } catch (Exception e) {
+                    if (key.channel() instanceof ServerSocketChannel) {
+                        continue;
+                    }
                     SocketChannel sc = (SocketChannel) key.channel();
                     if (sc != null) {
                         SocketChannel rc = sockets.get(sc);
