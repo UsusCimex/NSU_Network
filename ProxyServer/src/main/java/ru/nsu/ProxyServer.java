@@ -22,20 +22,18 @@ public class ProxyServer {
     private static final Map<SocketChannel, SocketChannel> sockets = new HashMap<>();
     private static Selector selector;
     public static void main(String[] args) throws IOException {
-        if (args.length != 1) {
-            System.out.println("Usage: java ProxyServer port");
-            throw new RuntimeException("The parameters are set incorrectly");
-        }
-        int proxyPort = Integer.parseInt(args[0]); // Порт прокси-сервера default 1080
+        int proxyPort = 1080; // Порт прокси-сервера default 1080
+        if (args.length != 0) proxyPort = Integer.parseInt(args[0]);
 
         ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
-        serverSocketChannel.socket().bind(new InetSocketAddress(proxyPort));
+        InetSocketAddress address = new InetSocketAddress(Objects.requireNonNull(AddressController.getAddress("Wi-Fi")), proxyPort);
+        serverSocketChannel.socket().bind(address);
         serverSocketChannel.configureBlocking(false);
 
         selector = Selector.open();
         serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
 
-        System.out.println("The proxy server is running on port " + proxyPort);
+        System.out.println("The proxy server is running on address " + address);
 
         // Основной цикл сервера
         while (true) {
