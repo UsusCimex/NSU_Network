@@ -19,6 +19,7 @@ import java.util.*;
 public class ProxyServer {
     private static final String USERNAME = "login";
     private static final String PASSWORD = "password";
+    private static final boolean authorizationFlag = false;
     private static final Map<SocketChannel, SocketChannel> sockets = new HashMap<>();
     private static Selector selector;
     public static void main(String[] args) throws IOException {
@@ -84,6 +85,7 @@ public class ProxyServer {
         SocketChannel clientChannel = serverChannel.accept();
         if (clientChannel != null) {
             System.out.println("A new connection to the client has been accepted: " + clientChannel.getRemoteAddress());
+            clientChannel.configureBlocking(true);
 
             SocketChannel remoteChannel = handleSocksRequest(clientChannel);
 
@@ -117,7 +119,6 @@ public class ProxyServer {
             throw new IOException("Session closed");
         }
 
-        SocketChannel remoteChannel = null;
         // Парсим SOCKS5 протокол.
         buffer.flip();
         byte version = buffer.get();
@@ -134,12 +135,38 @@ public class ProxyServer {
         byte[] authMethods = new byte[authMethodsCount];
         buffer.get(authMethods);
 
-        // Отправляем ответ клиенту, говоря ему, что мы поддерживаем анонимный доступ.
+        // Отправляем ответ клиенту, говоря ему код аутенфикации
         ByteBuffer responseBuffer = ByteBuffer.allocate(2);
         responseBuffer.put((byte) 5); // Версия SOCKS5
-        responseBuffer.put((byte) 0); // Метод аутентификации: 0 - не требуется, 1 - GSSAPI, 2 - USERNAME/PASSWORD
+        if (authorizationFlag) { // Метод аутентификации: 0 - не требуется, 1 - GSSAPI, 2 - USERNAME/PASSWORD
+            responseBuffer.put((byte) 2);
+        }
+        else {
+            responseBuffer.put((byte) 0);
+        }
         responseBuffer.flip();
         clientChannel.write(responseBuffer);
+
+        if (authorizationFlag) {
+            if (!authenticate(clientChannel)) {
+                System.err.println(clientChannel.getRemoteAddress() + " enter wrong LOGIN/PASSWORD");
+                responseBuffer = ByteBuffer.allocate(2);
+                responseBuffer.put((byte) 5);
+                responseBuffer.put((byte) 1);
+                responseBuffer.flip();
+                clientChannel.write(responseBuffer);
+                clientChannel.close();
+                throw new IOException("Session closed");
+            } else {
+                System.err.println(clientChannel.getRemoteAddress() + " entered the correct password");
+                responseBuffer = ByteBuffer.allocate(2);
+                responseBuffer.put((byte) 5);
+                responseBuffer.put((byte) 0);
+                responseBuffer.flip();
+                clientChannel.write(responseBuffer);
+                clientChannel.close();
+            }
+        }
 
         buffer = ByteBuffer.allocate(256);
         // Считываем команды от клиента
@@ -199,7 +226,7 @@ public class ProxyServer {
         System.out.println("Client(" + clientChannel.getRemoteAddress() + ") went to the address: " + destinationAddress + ":" + destinationPort);
 
         // Устанавливаем соединение с удаленным сервером
-        remoteChannel = SocketChannel.open();
+        SocketChannel remoteChannel = SocketChannel.open();
         remoteChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
 
         // Отправляем ответ клиенту
@@ -239,6 +266,7 @@ public class ProxyServer {
 
         if (authBytesRead <= 0) {
             // Некорректные данные аутентификации
+            System.err.println("AUTHENTICATE read error...");
             return false;
         }
 
@@ -252,6 +280,9 @@ public class ProxyServer {
         byte[] passwordBytes = new byte[passwordLength];
         authData.get(passwordBytes);
         String password = new String(passwordBytes, StandardCharsets.UTF_8);
+
+        System.err.println(username);
+        System.err.println(password);
 
         if (authVersion != 0x01 || !username.equals(USERNAME) || !password.equals(PASSWORD)) {
             // Некорректные логин и/или пароль
