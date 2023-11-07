@@ -13,56 +13,39 @@ import javafx.util.Duration;
 
 import java.util.LinkedList;
 
+// CLIENT
 public class SnakeGame extends Application {
     public record Coord(int x, int y) {}
-    private static final int WIDTH = 20;
-    private static final int HEIGHT = 20;
+    private GameContext gameContext; // server need to send me
+    private Direction direction = Direction.RIGHT;
     private static final int UNIT_SIZE = 20;
     private static final int DELAY = 75;
 
-    private LinkedList<Coord> snake = new LinkedList<>();
-    private int bodyParts = 6;
-    private int applesEaten;
-    private Coord apple;
-    private char direction = 'R';
-    private char nextDirection = direction;
-    private boolean running = false;
-
     public void start(Stage primaryStage) {
         Pane root = new Pane();
-        Scene scene = new Scene(root, WIDTH * UNIT_SIZE, HEIGHT * UNIT_SIZE);
-        Canvas canvas = new Canvas(WIDTH * UNIT_SIZE, HEIGHT * UNIT_SIZE);
+        Scene scene = new Scene(root, gameContext.getAreaWidth() * UNIT_SIZE, gameContext.getAreaHeight() * UNIT_SIZE);
+        Canvas canvas = new Canvas(gameContext.getAreaWidth() * UNIT_SIZE, gameContext.getAreaHeight() * UNIT_SIZE);
         GraphicsContext gc = canvas.getGraphicsContext2D();
 
         root.getChildren().add(canvas);
         scene.setOnKeyPressed(e -> {
             switch (e.getCode()) {
                 case LEFT:
-                    if (direction != 'R') nextDirection = 'L';
+                    direction = Direction.LEFT;
                     break;
                 case RIGHT:
-                    if (direction != 'L') nextDirection = 'R';
+                    direction = Direction.RIGHT;
                     break;
                 case UP:
-                    if (direction != 'D') nextDirection = 'U';
+                    direction = Direction.UP;
                     break;
                 case DOWN:
-                    if (direction != 'U') nextDirection = 'D';
+                    direction = Direction.DOWN;
                     break;
             }
         });
 
-        newSnake();
-        newApple();
-        running = true;
-
-        KeyFrame keyFrame = new KeyFrame(Duration.millis(DELAY), event -> {
-            if (running) {
-                move();
-                checkCollision();
-                draw(gc);
-            }
-        });
+        KeyFrame keyFrame = new KeyFrame(Duration.millis(DELAY), event -> draw(gc, gameContext));
 
         Timeline timeline = new Timeline(keyFrame);
         timeline.setCycleCount(Animation.INDEFINITE);
@@ -73,33 +56,31 @@ public class SnakeGame extends Application {
         primaryStage.show();
     }
 
-    private void newSnake() {
-        for (int i = 0; i < bodyParts; ++i) {
-            snake.addFirst(new Coord(i * UNIT_SIZE, 0));
-        }
-    }
-
-    public void draw(GraphicsContext gc) {
-        if (running) {
+    public void draw(GraphicsContext gc, GameContext gameContext) {
+        if (gameContext.isGameStatus()) {
             // Clear the canvas
-            gc.clearRect(0, 0, WIDTH * UNIT_SIZE, HEIGHT * UNIT_SIZE);
+            gc.clearRect(0, 0, gameContext.getAreaWidth() * UNIT_SIZE, gameContext.getAreaHeight() * UNIT_SIZE);
 
             // Draw apple
             gc.setFill(Color.RED);
-            gc.fillOval(apple.x(), apple.y(), UNIT_SIZE, UNIT_SIZE);
+            for (var apple : gameContext.getApples()) {
+                gc.fillOval(apple.x(), apple.y(), UNIT_SIZE, UNIT_SIZE);
+            }
 
-            // Draw snake
-            for (int i = 0; i < bodyParts; i++) {
-                if (i == 0) {
-                    gc.setFill(Color.GREEN.darker());
-                } else {
-                    if (i % 2 == 0) {
-                        gc.setFill(Color.GREEN);
+            for (var snake : gameContext.getSnakes().values()) {
+                // Draw snake
+                for (int i = 0; i < snake.getBody().size(); i++) {
+                    if (i == 0) {
+                        gc.setFill(snake.getColor().darker());
                     } else {
-                        gc.setFill(Color.GREEN.brighter());
+                        if (i % 2 == 0) {
+                            gc.setFill(snake.getColor());
+                        } else {
+                            gc.setFill(snake.getColor().brighter());
+                        }
                     }
+                    gc.fillRect(snake.getBody().get(i).x(), snake.getBody().get(i).y(), UNIT_SIZE, UNIT_SIZE);
                 }
-                gc.fillRect(snake.get(i).x(), snake.get(i).y(), UNIT_SIZE, UNIT_SIZE);
             }
 
             // Display the score
@@ -135,31 +116,6 @@ public class SnakeGame extends Application {
             }
         }
         apple = tempApple;
-    }
-
-    public void move() {
-        // Сохраняем координаты головы
-        Coord head = snake.getFirst();
-        int newX = head.x() / UNIT_SIZE;
-        int newY = head.y() / UNIT_SIZE;
-
-        // Обновляем позицию головы
-        direction = nextDirection;
-        switch (direction) {
-            case 'U' -> newY -= 1;
-            case 'D' -> newY += 1;
-            case 'L' -> newX -= 1;
-            case 'R' -> newX += 1;
-        }
-
-        // Зацикливание через стены
-        if (newX >= WIDTH) newX = 0;
-        if (newX < 0) newX = WIDTH - 1;
-        if (newY >= HEIGHT) newY = 0;
-        if (newY < 0) newY = HEIGHT - 1;
-
-        snake.addFirst(new Coord(newX * UNIT_SIZE, newY * UNIT_SIZE));
-        if (!checkApple()) snake.removeLast();
     }
 
     public boolean checkApple() {
