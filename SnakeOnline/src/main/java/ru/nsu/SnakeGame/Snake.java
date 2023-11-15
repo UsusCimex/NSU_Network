@@ -9,7 +9,8 @@ public class Snake {
     private final Deque<GameState.Coord> body; // Тело змеи, где body.peekFirst() - это голова
     private Direction direction; // Текущее направление змеи
     private Queue<Direction> nextDirection;
-    private boolean alive; // Состояние змеи
+    private GameState.Snake.SnakeState state;
+    private boolean alive;
     private final Color color;
 
     public Snake(ArrayList<GameState.Coord> initialPosition) {
@@ -17,7 +18,8 @@ public class Snake {
         body.addAll(initialPosition);
         this.direction = Direction.RIGHT; // Начальное направление
         this.nextDirection = new LinkedList<>();
-        this.alive = true;
+        this.state = GameState.Snake.SnakeState.ALIVE;
+        alive = true;
         Random random = new Random();
         this.color = Color.rgb(random.nextInt(256), random.nextInt(256), random.nextInt(256));
     }
@@ -79,14 +81,25 @@ public class Snake {
     public GameState.Coord getHead() {
         return body.peekFirst();
     }
-    public boolean isAlive() {
-        return alive;
-    }
-    public void setAlive(boolean status) {
-        alive = status;
+    public void setState(GameState.Snake.SnakeState state) {
+        this.state = state;
     }
     public Color getColor() {
         return color;
+    }
+
+    public Direction getHeadDirection() {
+        return direction;
+    }
+    public GameState.Snake.SnakeState getState() {
+        return state;
+    }
+    public boolean isAlive() {
+        return alive;
+    }
+
+    public void setAlive(boolean status) {
+        alive = status;
     }
 }
 

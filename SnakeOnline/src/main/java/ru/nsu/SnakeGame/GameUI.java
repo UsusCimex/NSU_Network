@@ -14,29 +14,29 @@ import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
+import ru.nsu.SnakeClient;
+import ru.nsu.SnakeServer;
 import ru.nsu.SnakesProto.*;
+import ru.nsu.patterns.Observer;
 
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.io.IOException;
 
-public class GameUI extends Application {
+public class GameUI extends Application implements Observer {
     private static final int CELL_SIZE = 15;
 
     private BorderPane root;
     private GridPane gameGrid;
+
     private TableView<String> leaderboardTable;
     private TableView<String> curGameInfo;
     private TableView<String> serverList;
-    private int GameDelay = 80;
-    private static GameField gameField = null;
-    private Thread gameThread;
-    private boolean gameRunning = false;
 
-    private Snake testSnake = new Snake(new ArrayList<>(Arrays.asList(
-            GameState.Coord.newBuilder().setX(2).setY(0).build(),
-            GameState.Coord.newBuilder().setX(1).setY(0).build(),
-            GameState.Coord.newBuilder().setX(0).setY(0).build()
-    )));
+    private static GameField gameField = null;
+
+    private SnakeServer server = null;
+    private boolean serverWorking = false;
+    private SnakeClient client = null;
+    private boolean clientWorking = false;
 
     @Override
     public void start(Stage stage) {
@@ -58,11 +58,10 @@ public class GameUI extends Application {
         stage.show();
 
         stage.setOnCloseRequest(event -> {
-            gameRunning = false;
+            serverWorking = false;
+            clientWorking = false;
             Platform.exit();
         });
-        gameRunning = true;
-        runGameLoop();
     }
 
     private void clearGameGrid() {
@@ -105,6 +104,7 @@ public class GameUI extends Application {
 
         Button createGameButton = new Button("Create Game");
         createGameButton.setPrefSize(200, 100);
+        createGameButton.setOnAction(event -> openCreateGameForm());
         Button exitGameButton = new Button("Exit Game");
         exitGameButton.setPrefSize(200, 100);
 
@@ -124,28 +124,70 @@ public class GameUI extends Application {
         return vbox;
     }
 
-    private void runGameLoop() {
-        gameThread = new Thread(() -> {
-            while (gameRunning) {
-                render();
-                try {
-                    Thread.sleep(GameDelay); // Регулировка частоты обновлений
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+    private void openCreateGameForm() {
+        Stage createGameStage = new Stage();
+        createGameStage.setTitle("Create Game");
+
+        // Создаем компоненты для формы создания игры
+        Label nameLabel = new Label("Game Name:");
+        TextField nameTextField = new TextField();
+
+        Label sizeLabel = new Label("Field Size:");
+        Label widthLabel = new Label("Width:");
+        TextField widthTextField = new TextField();
+        Label heightLabel = new Label("Height:");
+        TextField heightTextField = new TextField();
+
+        // Добавляем компоненты для формулы ax + b
+        Label formulaLabel = new Label("Food Formula(x - player count): ax + b");
+        Label coefficientALabel = new Label("Coefficient a:");
+        TextField coefficientATextField = new TextField();
+
+        Label coefficientBLabel = new Label("Coefficient b:");
+        TextField coefficientBTextField = new TextField();
+
+        Button confirmButton = new Button("Confirm");
+        confirmButton.setOnAction(event -> {
+            // Получаем введенные значения
+            String gameName = nameTextField.getText();
+            int fieldWidth = Integer.parseInt(widthTextField.getText());
+            int fieldHeight = Integer.parseInt(heightTextField.getText());
+            int foodCoefficientA = Integer.parseInt(coefficientATextField.getText());
+            int foodCoefficientB = Integer.parseInt(coefficientBTextField.getText());
+
+            // Создаем новую игру с полученными параметрами
+            try {
+                startServer(gameName, fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
+            } catch (IOException e) {
+                System.err.println("Server error");
+                throw new RuntimeException(e);
             }
+
+            // Закрываем форму создания игры
+            createGameStage.close();
         });
-        gameThread.start();
+
+        // Создаем и настраиваем layout для формы
+        VBox layout = new VBox();
+        layout.setSpacing(10);
+        layout.setPadding(new Insets(10));
+        layout.getChildren().addAll(nameLabel, nameTextField, sizeLabel, widthLabel, widthTextField, heightLabel, heightTextField,
+                                    formulaLabel, coefficientALabel, coefficientATextField, coefficientBLabel, coefficientBTextField, confirmButton);
+
+        Scene scene = new Scene(layout);
+        createGameStage.setScene(scene);
+        createGameStage.show();
     }
 
-    private void handleKeyPress(KeyCode code) { // test
-        System.err.println(code);
-        switch (code) {
-            case A, LEFT -> testSnake.setNextDirection(Direction.LEFT);
-            case S, DOWN -> testSnake.setNextDirection(Direction.DOWN);
-            case D, RIGHT -> testSnake.setNextDirection(Direction.RIGHT);
-            case W, UP -> testSnake.setNextDirection(Direction.UP);
-        }
+    private void startServer(String gameName, int fieldWidth, int fieldHeight, int foodCoefficientA, int foodCoefficientB) throws IOException {
+        gameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
+        // Создаем и запускаем сервер
+        server = new SnakeServer(gameName, 21212, gameField);
+        new Thread(() -> server.start()).start();
+    }
+
+    private void handleKeyPress(KeyCode code) {
+        // if player tap LEFT, UP, RIGHT, DOWN -> move snake!
     }
 
     private void render() {
@@ -190,5 +232,13 @@ public class GameUI extends Application {
 
     public static void main(String[] args) {
         launch(args);
+    }
+
+    @Override
+    public void update(Object o) {
+        if (o instanceof GameField) {
+            gameField = (GameField) o;
+            render();
+        }
     }
 }

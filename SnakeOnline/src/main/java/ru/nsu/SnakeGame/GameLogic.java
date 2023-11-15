@@ -5,8 +5,8 @@ import ru.nsu.SnakesProto.*;
 public class GameLogic {
     private final GameField gameField;
 
-    public GameLogic(int width, int height) {
-        this.gameField = new GameField(width, height);
+    public GameLogic(GameField gameField) {
+        this.gameField = gameField;
     }
 
     public void update() {

@@ -1,15 +1,17 @@
 package ru.nsu;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
+import java.net.*;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.util.concurrent.ConcurrentHashMap;
 
+import ru.nsu.SnakeGame.GameField;
 import ru.nsu.SnakeGame.GameLogic;
+import ru.nsu.SnakeGame.Snake;
 import ru.nsu.SnakesProto.*;
 public class SnakeServer {
-    private GameLogic snakeGameLogic;
+    private String serverName;
+    private int delayMS = 800;
+    private int announcementDelayMS = 5000;
+    private GameLogic snakeGame;
     private ConcurrentHashMap<Integer, GamePlayer> players = new ConcurrentHashMap<>();
     private ConcurrentHashMap<InetSocketAddress, Integer> addressToPlayerId = new ConcurrentHashMap<>();
     private int currentMaxId = 0;  // Простой способ генерировать ID для новых игроков
@@ -20,17 +22,36 @@ public class SnakeServer {
     private boolean running;
     private byte[] buf = new byte[256];
 
-    public SnakeServer(int port) throws IOException {
+    private static final String MULTICAST_ADDRESS = "224.0.0.1";
+    private static final int MULTICAST_PORT = 8888;
+
+    private MulticastSocket multicastSocket;
+    private InetAddress multicastGroup;
+
+    public SnakeServer(String name, int port, GameField gameField) throws IOException {
+        serverName = name;
         socket = new DatagramSocket(port);
-        snakeGameLogic = new GameLogic(30, 20);
+        snakeGame = new GameLogic(gameField);
+
+        multicastGroup = InetAddress.getByName(MULTICAST_ADDRESS);
+        multicastSocket = new MulticastSocket(MULTICAST_PORT);
+        multicastSocket.joinGroup(multicastGroup);
     }
 
     public void setSnakeGame(GameLogic snakeGameLogic) {
-        this.snakeGameLogic = snakeGameLogic;
+        this.snakeGame = snakeGameLogic;
     }
 
     public void start() {
+        System.err.println("Server started");
         running = true;
+        new Thread(() -> {
+            try {
+                sendAnnouncement();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }).start();
         while (running) {
             try {
                 DatagramPacket packet = new DatagramPacket(buf, buf.length);
@@ -62,6 +83,42 @@ public class SnakeServer {
         socket.close();
     }
 
+    private void sendAnnouncement() throws IOException {
+        while (running) {
+            sendAnnouncementMessage();
+            try {
+                Thread.sleep(announcementDelayMS);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void sendAnnouncementMessage() throws IOException {
+        GameMessage announcement = createAnnouncementMessage();
+        sendGameMessage(announcement, multicastGroup, MULTICAST_PORT);
+    }
+
+    private GameMessage createAnnouncementMessage() {
+        GameField field = snakeGame.getGameField();
+        return GameMessage.newBuilder().setAnnouncement(GameMessage.AnnouncementMsg.newBuilder()
+                        .addGames(GameAnnouncement.newBuilder()
+                                .setPlayers(GamePlayers.newBuilder()
+                                        .addAllPlayers(players.values())
+                                        .build())
+                                .setConfig(GameConfig.newBuilder()
+                                        .setWidth(field.getWidth())
+                                        .setHeight(field.getHeight())
+                                        .setFoodStatic(field.getFoods().size())
+                                        .setStateDelayMs(delayMS)
+                                        .build())
+                                .setCanJoin(true)
+                                .setGameName(serverName)
+                                .build())
+                        .build())
+                .build();
+    }
+
     private void handlePing(GameMessage message, InetAddress address, int port) {
         // Обработка Ping сообщения
     }
@@ -79,10 +136,38 @@ public class SnakeServer {
         if (canPlayerJoin()) {
             int playerId = addNewPlayer(join.getPlayerName(), address, port, join.getRequestedRole());
             sendAcknowledgement(playerId, address, port);
+            sendState(playerId, address, port);
         } else {
             System.err.println("Player " + join.getPlayerName() + " cannot join game");
             sendError("Cannot join game: no space", address, port);
         }
+    }
+
+    private void sendState(int playerId, InetAddress address, int port) throws IOException {
+        GameMessage stateMessage = createStateMessage(playerId);
+        sendGameMessage(stateMessage, address, port);
+    }
+
+    private GameMessage createStateMessage(int playerId) {
+        GameState.Builder gameStateBuilder = GameState.newBuilder();
+
+        // Добавляем еду
+        gameStateBuilder.addAllFoods(snakeGame.getGameField().getFoods());
+
+        // Преобразуем каждую змею в структуру Snake из библиотеки Protobuf
+        for (Snake snake : snakeGame.getGameField().getSnakes()) {
+            GameState.Snake.Builder snakeBuilder = GameState.Snake.newBuilder()
+                    .setPlayerId(playerId)
+                    .addAllPoints(snake.getBody())
+                    .setState(snake.getState())
+                    .setHeadDirection(snake.getHeadDirection());
+
+            gameStateBuilder.addSnakes(snakeBuilder.build());
+        }
+
+        return GameMessage.newBuilder()
+                .setState(GameMessage.StateMsg.newBuilder().setState(gameStateBuilder.build()).build())
+                .build();
     }
     private void handleAnnouncement(GameMessage message, InetAddress address, int port) {
         // Обработка оповещения о существующий играх
@@ -176,17 +261,5 @@ public class SnakeServer {
         players.put(playerId, player);
         addressToPlayerId.put(new InetSocketAddress(address, port), playerId);
         return playerId;
-    }
-
-
-    public static void main(String[] args) {
-        int port = Integer.parseInt(args[0]);
-        try {
-            SnakeServer server = new SnakeServer(port);
-            System.out.println("Server started on port " + port);
-            server.start();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 }
