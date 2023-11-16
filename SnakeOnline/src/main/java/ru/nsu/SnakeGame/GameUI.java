@@ -31,7 +31,7 @@ public class GameUI extends Application implements Observer {
     private TableView<String> curGameInfo;
     private TableView<String> serverList;
 
-    private static GameField gameField = null;
+    private GameField gameField = null;
 
     private SnakeServer server = null;
     private boolean serverWorking = false;
@@ -181,6 +181,7 @@ public class GameUI extends Application implements Observer {
 
     private void startServer(String gameName, int fieldWidth, int fieldHeight, int foodCoefficientA, int foodCoefficientB) throws IOException {
         gameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
+        gameField.registerObserver(this);
         // Создаем и запускаем сервер
         server = new SnakeServer(gameName, 21212, gameField);
         new Thread(() -> server.start()).start();
@@ -226,8 +227,9 @@ public class GameUI extends Application implements Observer {
         return rect;
     }
 
-    public static void setGameField(GameField field) {
+    public void setGameField(GameField field) {
         gameField = field;
+        render();
     }
 
     public static void main(String[] args) {
@@ -237,8 +239,7 @@ public class GameUI extends Application implements Observer {
     @Override
     public void update(Object o) {
         if (o instanceof GameField) {
-            gameField = (GameField) o;
-            render();
+            setGameField((GameField) o);
         }
     }
 }

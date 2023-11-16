@@ -8,11 +8,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class GameField implements Observable {
-    private List<Observer> observers = new ArrayList<>();
-    private int width, height;
-    private int foodCoefficientA, foodCoefficientB;
-    private List<Snake> snakes;
-    private List<GameState.Coord> foods;
+    private final List<Observer> observers = new ArrayList<>();
+    private final int width;
+    private final int height;
+    private final int foodCoefficientA;
+    private final int foodCoefficientB;
+    private final List<Snake> snakes;
+    private final List<GameState.Coord> foods;
 
     public GameField(int width, int height, int foodCoefficientA, int foodCoefficientB) {
         this.width = width;
