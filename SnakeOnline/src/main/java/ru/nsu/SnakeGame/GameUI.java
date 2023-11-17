@@ -17,12 +17,13 @@ import javafx.stage.Stage;
 import ru.nsu.SnakeClient;
 import ru.nsu.SnakeServer;
 import ru.nsu.SnakesProto.*;
-import ru.nsu.patterns.Observer;
 
 import java.io.IOException;
 
-public class GameUI extends Application implements Observer {
+public class GameUI extends Application {
     private static final int CELL_SIZE = 15;
+    private int announcementDelayMS = 5000;
+    private int stateDelayMS = 1000;
 
     private BorderPane root;
     private GridPane gameGrid;
@@ -155,11 +156,11 @@ public class GameUI extends Application implements Observer {
             int foodCoefficientA = Integer.parseInt(coefficientATextField.getText());
             int foodCoefficientB = Integer.parseInt(coefficientBTextField.getText());
 
-            // Создаем новую игру с полученными параметрами
+            // Создаём игру
+            gameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
             try {
-                startServer(gameName, fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
+                createServer(gameName, 21212);
             } catch (IOException e) {
-                System.err.println("Server error");
                 throw new RuntimeException(e);
             }
 
@@ -179,12 +180,39 @@ public class GameUI extends Application implements Observer {
         createGameStage.show();
     }
 
-    private void startServer(String gameName, int fieldWidth, int fieldHeight, int foodCoefficientA, int foodCoefficientB) throws IOException {
-        gameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
-        gameField.registerObserver(this);
-        // Создаем и запускаем сервер
-        server = new SnakeServer(gameName, 21212, gameField);
-        new Thread(() -> server.start()).start();
+    private void createServer(String gameName, int port) throws IOException {
+        server = new SnakeServer(gameName, port, gameField);
+        System.err.println("Server started");
+        serverWorking = true;
+
+        Thread serverListener = new Thread(() -> {
+            while (serverWorking) {
+                server.receiveMessage();
+            }
+        });
+
+        Thread announcementThread = new Thread(() -> {
+            while (serverWorking) {
+                try {
+                    server.sendAnnouncement(SnakeServer.getMulticastAddress(), SnakeServer.getMulticastPort());
+                    Thread.sleep(announcementDelayMS);
+                } catch (InterruptedException | IOException e) {
+                    System.err.println("Announcement send error!");
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+
+        Thread stateThread = new Thread(() -> {
+            while (serverWorking) {
+                try {
+                    server.sendState(server.getMulticastGroup(), server.getMulticastGroupPort());
+                    Thread.sleep(stateDelayMS);
+                } catch (InterruptedException | IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
     }
 
     private void handleKeyPress(KeyCode code) {
@@ -234,12 +262,5 @@ public class GameUI extends Application implements Observer {
 
     public static void main(String[] args) {
         launch(args);
-    }
-
-    @Override
-    public void update(Object o) {
-        if (o instanceof GameField) {
-            setGameField((GameField) o);
-        }
     }
 }

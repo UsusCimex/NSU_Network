@@ -12,10 +12,12 @@ public class Snake {
     private GameState.Snake.SnakeState state;
     private boolean alive;
     private final Color color;
+    private int playerID;
 
-    public Snake(ArrayList<GameState.Coord> initialPosition) {
+    public Snake(ArrayList<GameState.Coord> initialPosition, int playerID) {
         body = new ArrayDeque<>();
         body.addAll(initialPosition);
+        this.playerID = playerID;
         this.direction = Direction.RIGHT; // Начальное направление
         this.nextDirection = new LinkedList<>();
         this.state = GameState.Snake.SnakeState.ALIVE;
@@ -100,6 +102,9 @@ public class Snake {
 
     public void setAlive(boolean status) {
         alive = status;
+    }
+    public int getPlayerID() {
+        return playerID;
     }
 }
 

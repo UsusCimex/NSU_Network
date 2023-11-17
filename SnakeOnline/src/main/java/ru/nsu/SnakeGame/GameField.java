@@ -7,8 +7,7 @@ import ru.nsu.patterns.Observer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GameField implements Observable {
-    private final List<Observer> observers = new ArrayList<>();
+public class GameField {
     private final int width;
     private final int height;
     private final int foodCoefficientA;
@@ -40,34 +39,14 @@ public class GameField implements Observable {
     }
     public void addSnake(Snake snake) {
         snakes.add(snake);
-        notifyObservers();
     }
     public int amountOfFoodNeeded(int playerCount) {
         return foodCoefficientA * playerCount + foodCoefficientB;
     }
     public void addFood(GameState.Coord food) {
         foods.add(food);
-        notifyObservers();
     }
     public void removeFood(GameState.Coord food) {
         foods.remove(food);
-        notifyObservers();
-    }
-
-    @Override
-    public void registerObserver(Observer o) {
-        observers.add(o);
-    }
-
-    @Override
-    public void removeObserver(Observer o) {
-        observers.remove(o);
-    }
-
-    @Override
-    public void notifyObservers() {
-        for (Observer observer : observers) {
-            observer.update(this);
-        }
     }
 }
