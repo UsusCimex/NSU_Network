@@ -26,6 +26,84 @@ public class Snake {
         this.color = Color.rgb(random.nextInt(256), random.nextInt(256), random.nextInt(256));
     }
 
+    public static Snake parseSnake(GameState.Snake snake) {
+        ArrayList<GameState.Coord> bodySnake = new ArrayList<>();
+        GameState.Coord snakePointer = snake.getPoints(0);
+        bodySnake.add(snakePointer);
+        for (int i = 1; i < snake.getPointsCount(); ++i) {
+            GameState.Coord tailMove = bodySnake.get(i);
+            int x = snakePointer.getX();
+            int y = snakePointer.getY();
+            if (x > 0) {
+                for (int j = 0; j < tailMove.getX(); ++j) {
+                    snakePointer = GameState.Coord.newBuilder().setX(++x).setY(y).build();
+                    bodySnake.add(snakePointer);
+                }
+            } else if (x < 0) {
+                for (int j = 0; j > tailMove.getX(); --j) {
+                    snakePointer = GameState.Coord.newBuilder().setX(--x).setY(y).build();
+                    bodySnake.add(snakePointer);
+                }
+            } else if (y > 0) {
+                for (int j = 0; j < tailMove.getY(); ++j) {
+                    snakePointer = GameState.Coord.newBuilder().setX(x).setY(++y).build();
+                    bodySnake.add(snakePointer);
+                }
+            } else if (y < 0) {
+                for (int j = 0; j > tailMove.getY(); --j) {
+                    snakePointer = GameState.Coord.newBuilder().setX(x).setY(--y).build();
+                    bodySnake.add(snakePointer);
+                }
+            }
+        }
+        return new Snake(bodySnake, snake.getPlayerId());
+    }
+
+    public static GameState.Snake generateSnakeProto(Snake snake) {
+        GameState.Snake.Builder snakeBuilder = GameState.Snake.newBuilder();
+        Iterator<GameState.Coord> iterator = snake.getBody().iterator();
+
+        if (iterator.hasNext()) {
+            GameState.Coord headCoord = iterator.next();
+            snakeBuilder.addPoints(headCoord);
+
+            int pointX = headCoord.getX();
+            int pointY = headCoord.getY();
+
+            int oldOffsetX = 0;
+            int oldOffsetY = 0;
+
+            while (iterator.hasNext()) {
+                GameState.Coord coord = iterator.next();
+
+                int nPointX = coord.getX();
+                int nPointY = coord.getY();
+
+                int offsetX = nPointX - pointX;
+                int offsetY = nPointY - pointY;
+
+                if (offsetX != 0 && offsetY != 0) {
+                    snakeBuilder.addPoints(GameState.Coord.newBuilder().setX(oldOffsetX).setY(oldOffsetX).build());
+                    pointX = nPointX;
+                    pointY = nPointY;
+                    offsetX -= oldOffsetX;
+                    offsetY -= oldOffsetY;
+                }
+
+                oldOffsetX = offsetX;
+                oldOffsetY = offsetY;
+            }
+
+            if (oldOffsetX != 0 && oldOffsetY != 0) {
+                snakeBuilder.addPoints(GameState.Coord.newBuilder().setX(oldOffsetX).setY(oldOffsetX).build());
+            }
+        }
+
+        snakeBuilder.setPlayerId(snake.getPlayerID());
+        return snakeBuilder.build();
+    }
+
+
     public void move(GameField gameField) {
         GameState.Coord head = body.peekFirst();
         assert head != null;

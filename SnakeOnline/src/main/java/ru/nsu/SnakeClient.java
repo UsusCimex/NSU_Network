@@ -1,27 +1,32 @@
 package ru.nsu;
 
-import javafx.application.Application;
 import ru.nsu.SnakeGame.GameField;
-import ru.nsu.SnakeGame.GameUI;
 import ru.nsu.SnakesProto.*;
+import ru.nsu.patterns.Observer;
+
 import java.io.IOException;
 import java.net.*;
+import java.util.Arrays;
 
 public class SnakeClient {
+    private Observer observer;
+    private long msgSeq = 0;
     private DatagramSocket socket;
     private InetAddress address;
     private int serverPort;
-    private boolean running;
+    private GameField gameField = null;
     private byte[] buf = new byte[256];
 
-    public SnakeClient(String address, int serverPort) throws UnknownHostException, SocketException {
+    public SnakeClient(String address, int serverPort, Observer observer) throws UnknownHostException, SocketException {
         this.socket = new DatagramSocket();
         this.address = InetAddress.getByName(address);
         this.serverPort = serverPort;
+        this.observer = observer;
     }
 
     public void sendJoinRequest(String playerName) throws IOException {
         GameMessage joinMessage = GameMessage.newBuilder()
+                .setMsgSeq(++msgSeq)
                 .setJoin(GameMessage.JoinMsg.newBuilder()
                         .setPlayerName(playerName)
                         .setGameName("Example Game") // Это значение должно соответствовать имени игры на сервере
@@ -36,6 +41,7 @@ public class SnakeClient {
 
     public void sendSteer(Direction direction) throws IOException {
         GameMessage steerMessage = GameMessage.newBuilder()
+                .setMsgSeq(++msgSeq)
                 .setSteer(GameMessage.SteerMsg.newBuilder()
                         .setDirection(direction)
                         .build())
@@ -46,10 +52,14 @@ public class SnakeClient {
         socket.send(packet);
     }
 
-    public void receiveState() throws IOException {
+    public void receiveMessage() throws IOException {
         DatagramPacket packet = new DatagramPacket(buf, buf.length);
         socket.receive(packet);
-        GameMessage message = GameMessage.parseFrom(packet.getData());
+
+        byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
+
+        GameMessage message = GameMessage.parseFrom(trimmedData);
+        System.err.println("[Client] listened " + message.getTypeCase());
         switch (message.getTypeCase()) {
             case PING  -> handlePing(message, address, serverPort);
             case STEER -> handleSteer(message, address, serverPort);
@@ -82,7 +92,8 @@ public class SnakeClient {
     }
 
     private void handleState(GameMessage message, InetAddress address, int port) {
-        // Обработка сообщения состояния игры
+        GameMessage.StateMsg stateMsg = message.getState();
+        observer.update(stateMsg);
     }
 
     private void handleAck(GameMessage message, InetAddress address, int port) {
@@ -98,6 +109,7 @@ public class SnakeClient {
 
     private void sendError(String errorMessage, InetAddress address, int port) throws IOException {
         GameMessage error = GameMessage.newBuilder()
+                .setMsgSeq(++msgSeq)
                 .setError(GameMessage.ErrorMsg.newBuilder().setErrorMessage(errorMessage).build())
                 .build();
 
@@ -105,6 +117,7 @@ public class SnakeClient {
     }
     private void sendAcknowledgement(int playerId, InetAddress address, int port) throws IOException {
         GameMessage ack = GameMessage.newBuilder()
+                .setMsgSeq(++msgSeq)
                 .setAck(GameMessage.AckMsg.newBuilder().build())
                 .build();
 
@@ -113,30 +126,7 @@ public class SnakeClient {
     private void sendGameMessage(GameMessage gameMessage, InetAddress address, int port) throws IOException {
         byte[] buffer = gameMessage.toByteArray();
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, port);
+        System.err.println("[Server] Send message " + gameMessage.getTypeCase() + " to " + address + ":" + port);
         socket.send(packet);
-    }
-
-    public void start() {
-        running = true;
-        while (running) {
-            try {
-                receiveState();
-            } catch (IOException e) {
-                e.printStackTrace();
-                running = false;
-            }
-        }
-    }
-
-    public static void main(String[] args) {
-        try {
-            int port = Integer.parseInt(args[0]);
-            SnakeClient client = new SnakeClient("localhost", port);
-            System.out.println("Client started and listening for game state updates...");
-            Application.launch(GameUI.class, new String());
-            client.start();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 }

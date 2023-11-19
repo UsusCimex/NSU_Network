@@ -1,6 +1,7 @@
 package ru.nsu;
 import java.net.*;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 
 import ru.nsu.SnakeGame.GameField;
@@ -9,6 +10,8 @@ import ru.nsu.SnakeGame.Snake;
 import ru.nsu.SnakesProto.*;
 
 public class SnakeServer {
+    private long msgSeq = 0;
+    private int stateOrder = 0;
     private String serverName;
     private int delayMS = 800;
     private GameLogic snakeGame;
@@ -25,7 +28,7 @@ public class SnakeServer {
 
     private MulticastSocket multicastSocket;
     private InetAddress multicastGroup;
-    private int multicastGroupPort;
+    private int multicastGroupPort = 21212;
 
     public SnakeServer(String name, int port, GameField gameField) throws IOException {
         serverName = name;
@@ -41,31 +44,30 @@ public class SnakeServer {
         this.snakeGame = snakeGameLogic;
     }
 
-    public void receiveMessage() {
-        try {
-            DatagramPacket packet = new DatagramPacket(buf, buf.length);
-            socket.receive(packet);
+    public void receiveMessage() throws IOException {
+        DatagramPacket packet = new DatagramPacket(buf, buf.length);
+        socket.receive(packet);
 
-            InetAddress address = packet.getAddress();
-            int port = packet.getPort();
+        byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
 
-            GameMessage message = GameMessage.parseFrom(packet.getData());
-            switch (message.getTypeCase()) {
-                case PING  -> handlePing(message, address, port);
-                case STEER -> handleSteer(message, address, port);
-                case JOIN  -> handleJoin(message, address, port);
-                case ANNOUNCEMENT -> handleAnnouncement(message, address, port);
-                case STATE -> handleState(message, address, port);
-                case ACK   -> handleAck(message, address, port);
-                case ERROR -> handleError(message, address, port);
-                case ROLE_CHANGE -> handleRoleChange(message, address, port);
-                default    -> {
-                    System.err.println("Unknown message type (" + message.getTypeCase() + ") from " + address.toString() + port);
-                    sendError("Unknown message type", address, port);
-                }
+        InetAddress address = packet.getAddress();
+        int port = packet.getPort();
+
+        GameMessage message = GameMessage.parseFrom(trimmedData);
+        System.err.println("[Server] listened " + message.getTypeCase());
+        switch (message.getTypeCase()) {
+            case PING  -> handlePing(message, address, port);
+            case STEER -> handleSteer(message, address, port);
+            case JOIN  -> handleJoin(message, address, port);
+            case ANNOUNCEMENT -> handleAnnouncement(message, address, port);
+            case STATE -> handleState(message, address, port);
+            case ACK   -> handleAck(message, address, port);
+            case ERROR -> handleError(message, address, port);
+            case ROLE_CHANGE -> handleRoleChange(message, address, port);
+            default    -> {
+                System.err.println("Unknown message type (" + message.getTypeCase() + ") from " + address.toString() + port);
+                sendError("Unknown message type", address, port);
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
@@ -76,7 +78,9 @@ public class SnakeServer {
 
     private GameMessage createAnnouncementMessage() {
         GameField field = snakeGame.getGameField();
-        return GameMessage.newBuilder().setAnnouncement(GameMessage.AnnouncementMsg.newBuilder()
+        return GameMessage.newBuilder()
+                .setMsgSeq(++msgSeq)
+                .setAnnouncement(GameMessage.AnnouncementMsg.newBuilder()
                         .addGames(GameAnnouncement.newBuilder()
                                 .setPlayers(GamePlayers.newBuilder()
                                         .addAllPlayers(players.values())
@@ -124,7 +128,8 @@ public class SnakeServer {
     }
 
     private GameMessage createStateMessage() {
-        GameState.Builder gameStateBuilder = GameState.newBuilder();
+        GameState.Builder gameStateBuilder = GameState.newBuilder()
+                .setStateOrder(++stateOrder);
 
         // Добавляем еду
         gameStateBuilder.addAllFoods(snakeGame.getGameField().getFoods());
@@ -140,7 +145,11 @@ public class SnakeServer {
             gameStateBuilder.addSnakes(snakeBuilder.build());
         }
 
+        // Добавляем игроков
+        gameStateBuilder.setPlayers(GamePlayers.newBuilder().addAllPlayers(players.values()).build());
+
         return GameMessage.newBuilder()
+                .setMsgSeq(++msgSeq)
                 .setState(GameMessage.StateMsg.newBuilder().setState(gameStateBuilder.build()).build())
                 .build();
     }
@@ -194,6 +203,7 @@ public class SnakeServer {
 
     private void sendError(String errorMessage, InetAddress address, int port) throws IOException {
         GameMessage error = GameMessage.newBuilder()
+                .setMsgSeq(++msgSeq)
                 .setError(GameMessage.ErrorMsg.newBuilder().setErrorMessage(errorMessage).build())
                 .build();
 
@@ -201,6 +211,7 @@ public class SnakeServer {
     }
     private void sendAcknowledgement(int playerId, InetAddress address, int port) throws IOException {
         GameMessage ack = GameMessage.newBuilder()
+                .setMsgSeq(++msgSeq)
                 .setAck(GameMessage.AckMsg.newBuilder().build())
                 .build();
 
@@ -209,6 +220,7 @@ public class SnakeServer {
     private void sendGameMessage(GameMessage gameMessage, InetAddress address, int port) throws IOException {
         byte[] buffer = gameMessage.toByteArray();
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, port);
+        System.err.println("[Server] Send message " + gameMessage.getTypeCase() + " to " + address + ":" + port);
         socket.send(packet);
     }
     private int getPlayerIdByAddress(InetAddress address, int port) {

@@ -25,7 +25,7 @@ tasks.withType(JavaCompile) {
 
 application {
     mainModule = 'ru.nsu'
-    mainClass = 'ru.nsu.SnakeClient'
+    mainClass = 'ru.nsu.UI.GameUI'
 }
 
 javafx {

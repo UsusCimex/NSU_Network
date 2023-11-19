@@ -1,8 +1,6 @@
 package ru.nsu.SnakeGame;
 
 import ru.nsu.SnakesProto.*;
-import ru.nsu.patterns.Observable;
-import ru.nsu.patterns.Observer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,8 +10,8 @@ public class GameField {
     private final int height;
     private final int foodCoefficientA;
     private final int foodCoefficientB;
-    private final List<Snake> snakes;
-    private final List<GameState.Coord> foods;
+    private List<Snake> snakes;
+    private List<GameState.Coord> foods;
 
     public GameField(int width, int height, int foodCoefficientA, int foodCoefficientB) {
         this.width = width;
@@ -45,6 +43,12 @@ public class GameField {
     }
     public void addFood(GameState.Coord food) {
         foods.add(food);
+    }
+    public void setFoods(List<GameState.Coord> foods) {
+        this.foods = foods;
+    }
+    public void setSnakes(List<Snake> snakes) {
+        this.snakes = snakes;
     }
     public void removeFood(GameState.Coord food) {
         foods.remove(food);
