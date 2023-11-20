@@ -16,6 +16,9 @@ public class SnakeServer {
     public static final int GAME_MULTICAST_PORT = 8888;
     public static final int CLIENT_MULTICAST_PORT = 8889;
 
+    private long announcementDelayMS = 1000;
+    private long stateDelayMS = 1000;
+
     private MulticastSocket gameMulticastSocket;
     private InetAddress gameMulticastGroup;
     private MulticastSocket clientMulticastSocket;
@@ -47,26 +50,70 @@ public class SnakeServer {
         clientMulticastGroup = InetAddress.getByName(MULTICAST_ADDRESS);
         clientMulticastSocket = new MulticastSocket(CLIENT_MULTICAST_PORT);
         clientMulticastSocket.joinGroup(clientMulticastGroup);
-
-        startGameLoop();
     }
 
-    public void startGameLoop() {
-        new Thread(() -> {
-            running = true;
+    public void start() throws IOException {
+        running = true;
+        Thread serverListener = new Thread(() -> {
             while (running) {
                 try {
-                    Thread.sleep(delayMS); // Adjust the delay according to your requirements
+                    receiveMessage();
+                } catch (IOException e) {
+                    System.err.println("[Server] Receive message error!");
+                    running = false;
+                }
+            }
+        });
+
+        Thread announcementThread = new Thread(() -> {
+            while (running) {
+                try {
+                    sendAnnouncement(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.GAME_MULTICAST_PORT);
+                    Thread.sleep(announcementDelayMS);
+                } catch (InterruptedException | IOException e) {
+                    System.err.println("Announcement send error!");
+                    running = false;
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+
+        Thread stateThread = new Thread(() -> {
+            while (running) {
+                try {
+                    sendState(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.CLIENT_MULTICAST_PORT);
+                    Thread.sleep(stateDelayMS);
+                } catch (InterruptedException | IOException e) {
+                    System.err.println("State send error!");
+                    running = false;
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+
+        Thread gameLoop = new Thread(() -> {
+            while (running) {
+                try {
+                    Thread.sleep(delayMS);
                     snakeGame.update();
                 } catch (InterruptedException e) {
+                    running = false;
                     e.printStackTrace();
                 }
             }
-        }).start();
+        });
+
+        serverListener.start();
+        announcementThread.start();
+        stateThread.start();
+        gameLoop.start();
     }
 
-    public void stopGameLoop() {
+    public void stop() {
         running = false;
+        socket.close();
+        gameMulticastSocket.close();
+        clientMulticastSocket.close();
     }
 
     public void receiveMessage() throws IOException {
@@ -153,8 +200,6 @@ public class SnakeServer {
             sendError("Cannot join the game: no space", address, port);
         }
     }
-
-
 
     public void sendState(InetAddress address, int port) throws IOException {
         GameMessage stateMessage = createStateMessage();

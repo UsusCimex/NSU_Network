@@ -31,8 +31,6 @@ import java.util.*;
 public class GameUI extends Application implements Observer {
     private static final int CELL_SIZE = 15;
     private long threshold = 3000;
-    private long announcementDelayMS = 1000;
-    private long stateDelayMS = 1000;
 
     private BorderPane root;
     private GridPane gameGrid;
@@ -48,9 +46,7 @@ public class GameUI extends Application implements Observer {
     private boolean running = false;
 
     private SnakeServer server = null;
-    private boolean serverWorking = false;
     private SnakeClient client = null;
-    private boolean clientWorking = false;
 
     @Override
     public void start(Stage stage) {
@@ -73,7 +69,6 @@ public class GameUI extends Application implements Observer {
 
         stage.setOnCloseRequest(event -> {
             gameExit();
-            clientWorking = false;
             Platform.exit();
         });
 
@@ -178,14 +173,14 @@ public class GameUI extends Application implements Observer {
     }
 
     private void gameExit() {
-        serverWorking = false;
         if (server != null) {
-            server.stopGameLoop();
+            server.stop();
             server = null;
         }
-
-        clientWorking = false;
-        client = null;
+        if (client != null) {
+            client.stop();
+            client = null;
+        }
     }
 
     private void openCreateGameForm() {
@@ -225,12 +220,8 @@ public class GameUI extends Application implements Observer {
 
             // Создаём игру
             gameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
-            try {
-                createServer(gameName, 21212);
-                createClient(playerName, SnakeServer.MULTICAST_ADDRESS, SnakeServer.CLIENT_MULTICAST_PORT);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            startServer(gameName, gameField);
+            startClient(playerName);
 
             // Закрываем форму создания игры
             createGameStage.close();
@@ -248,77 +239,28 @@ public class GameUI extends Application implements Observer {
         createGameStage.show();
     }
 
-    private void createServer(String gameName, int port) throws IOException {
-        server = new SnakeServer(gameName, port, gameField);
-        System.err.println("Server started: localhost:" + port);
-        serverWorking = true;
-
-        Thread serverListener = new Thread(() -> {
-            while (serverWorking) {
-                try {
-                    System.err.println("[Server] Listen...");
-                    server.receiveMessage();
-                } catch (IOException e) {
-                    System.err.println("Receive message error!");
-                    gameExit();
-                    throw new RuntimeException(e);
-                }
-            }
-        });
-
-        Thread announcementThread = new Thread(() -> {
-            while (serverWorking) {
-                try {
-                    server.sendAnnouncement(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.GAME_MULTICAST_PORT);
-                    Thread.sleep(announcementDelayMS);
-                } catch (InterruptedException | IOException e) {
-                    System.err.println("Announcement send error!");
-                    gameExit();
-                    throw new RuntimeException(e);
-                }
-            }
-        });
-
-        Thread stateThread = new Thread(() -> {
-            while (serverWorking) {
-                try {
-                    server.sendState(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.CLIENT_MULTICAST_PORT);
-                    Thread.sleep(stateDelayMS);
-                } catch (InterruptedException | IOException e) {
-                    System.err.println("State send error!");
-                    gameExit();
-                    throw new RuntimeException(e);
-                }
-            }
-        });
-
-        serverListener.start();
-        announcementThread.start();
-        stateThread.start();
+    private void startServer(String gameName, GameField gameField) {
+        try {
+            server = new SnakeServer(gameName, 21212, gameField);
+            server.start();
+        } catch (IOException e) {
+            System.err.println("Start server exception!");
+            throw new RuntimeException(e);
+        }
     }
 
-    private void createClient(String name, String address, int port) throws IOException {
-        client = new SnakeClient(address, port, this);
-        client.sendJoinRequest(name);
-        System.err.println("[Client] started: " + address + ":" + port);
-
-        clientWorking = true;
-        Thread clientThread = new Thread(() -> {
-            while (clientWorking) {
-                try {
-                    System.err.println("[Client] Listen...");
-                    client.receiveMessage();
-                } catch (IOException ex) {
-                    clientWorking = false;
-                    ex.printStackTrace();
-                }
-            }
-        });
-        clientThread.start();
+    private void startClient(String playerName) {
+        try {
+            client = new SnakeClient(SnakeServer.MULTICAST_ADDRESS, SnakeServer.CLIENT_MULTICAST_PORT, this);
+            client.start(playerName); // Start the client's network operations
+        } catch (IOException e) {
+            System.err.println("Start client exception!");
+            throw new RuntimeException(e);
+        }
     }
 
     private void handleKeyPress(KeyCode code) {
-        if (clientWorking) {
+        if (client != null) {
             try {
                 switch (code) {
                     case A, LEFT  -> client.sendSteer(Direction.LEFT);
@@ -328,7 +270,6 @@ public class GameUI extends Application implements Observer {
                 }
             } catch (IOException ex) {
                 System.err.println("Steer send error!");
-                clientWorking = false;
                 ex.printStackTrace();
             }
         }
@@ -463,7 +404,7 @@ public class GameUI extends Application implements Observer {
                     serverList.getItems().removeIf(server -> server.serverNameProperty().get().equals(gameName));
                 });
             }
-        }, 3000);
+        }, threshold);
         serverTimers.put(gameName, timer);
     }
 }

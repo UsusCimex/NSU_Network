@@ -16,6 +16,7 @@ public class SnakeClient {
     private int serverPort;
     private GameField gameField = null;
     private byte[] buf = new byte[256];
+    private boolean running = false;
 
     public SnakeClient(String address, int serverPort, Observer observer) throws IOException {
         this.socket = new DatagramSocket();
@@ -26,6 +27,29 @@ public class SnakeClient {
         this.serverPort = serverPort;
         this.observer = observer;
     }
+
+    public void start(String playerName) throws IOException {
+        sendJoinRequest(playerName);
+
+        running = true;
+        Thread clientThread = new Thread(() -> {
+            while (running) {
+                try {
+                    receiveMessage();
+                } catch (IOException ex) {
+                    System.err.println("[Client] Receive message error!");
+                    running = false;
+                }
+            }
+        });
+        clientThread.start();
+    }
+
+    public void stop() {
+        running = false;
+        socket.close();
+    }
+
 
     public void sendJoinRequest(String playerName) throws IOException {
         GameMessage joinMessage = GameMessage.newBuilder()
