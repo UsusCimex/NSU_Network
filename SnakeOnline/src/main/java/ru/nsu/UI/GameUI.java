@@ -325,9 +325,8 @@ public class GameUI extends Application implements Observer {
         if (o instanceof GameMessage.StateMsg) {
             GameMessage.StateMsg stateMsg = (GameMessage.StateMsg) o;
             gameField.setFoods(stateMsg.getState().getFoodsList());
-            gameField.getSnakes().clear();
             for (GameState.Snake snake : stateMsg.getState().getSnakesList()) {
-                gameField.addSnake(Snake.parseSnake(snake));
+                gameField.updateSnake(Snake.parseSnake(snake));
             }
             render();
 

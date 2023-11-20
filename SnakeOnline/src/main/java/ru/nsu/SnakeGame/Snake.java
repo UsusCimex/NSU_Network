@@ -36,10 +36,16 @@ public class Snake {
 
         for (int i = 1; i < snake.getPointsCount(); i++) {
             GameState.Coord offset = snake.getPoints(i);
-            x += offset.getX();
-            y += offset.getY();
-            GameState.Coord newPoint = GameState.Coord.newBuilder().setX(x).setY(y).build();
-            bodySnake.add(newPoint);
+
+            // Добавляем каждую точку смещения между ключевыми точками
+            for (int j = 0; j < Math.abs(offset.getX()); j++) {
+                x += Integer.signum(offset.getX()); // Увеличиваем или уменьшаем x в зависимости от знака смещения
+                bodySnake.add(GameState.Coord.newBuilder().setX(x).setY(y).build());
+            }
+            for (int j = 0; j < Math.abs(offset.getY()); j++) {
+                y += Integer.signum(offset.getY()); // Увеличиваем или уменьшаем y в зависимости от знака смещения
+                bodySnake.add(GameState.Coord.newBuilder().setX(x).setY(y).build());
+            }
         }
 
         return new Snake(bodySnake, snake.getPlayerId());
@@ -47,41 +53,48 @@ public class Snake {
 
     public static GameState.Snake generateSnakeProto(Snake snake) {
         GameState.Snake.Builder snakeBuilder = GameState.Snake.newBuilder();
+        List<GameState.Coord> body = new ArrayList<>(snake.getBody());
 
-        if (!snake.getBody().isEmpty()) {
-            Iterator<GameState.Coord> iterator = snake.getBody().iterator();
-            GameState.Coord prevCoord = iterator.next();
-            snakeBuilder.addPoints(prevCoord);
+        if (!body.isEmpty()) {
+            snakeBuilder.addPoints(body.get(0)); // Добавляем голову
 
+            int prevX = body.get(0).getX();
+            int prevY = body.get(0).getY();
             int cumulativeX = 0;
             int cumulativeY = 0;
 
-            while (iterator.hasNext()) {
-                GameState.Coord currentCoord = iterator.next();
-                int offsetX = currentCoord.getX() - prevCoord.getX();
-                int offsetY = currentCoord.getY() - prevCoord.getY();
+            for (int i = 1; i < body.size(); i++) {
+                int currentX = body.get(i).getX();
+                int currentY = body.get(i).getY();
 
-                // Если змейка продолжает двигаться в том же направлении, накапливаем смещение
-                if ((cumulativeX == 0 || offsetX == 0) && (cumulativeY == 0 || offsetY == 0)) {
-                    cumulativeX += offsetX;
-                    cumulativeY += offsetY;
-                } else {
-                    // Если направление изменилось, добавляем накопленное смещение и начинаем заново
+                int deltaX = currentX - prevX;
+                int deltaY = currentY - prevY;
+
+                // Проверяем, изменилось ли направление
+                if ((deltaX != 0 && cumulativeY != 0) || (deltaY != 0 && cumulativeX != 0)) {
+                    // Направление изменилось, добавляем накопленное смещение и обнуляем накопитель
                     snakeBuilder.addPoints(GameState.Coord.newBuilder().setX(cumulativeX).setY(cumulativeY).build());
-                    cumulativeX = offsetX;
-                    cumulativeY = offsetY;
+                    cumulativeX = 0;
+                    cumulativeY = 0;
                 }
 
-                prevCoord = currentCoord;
+                // Накапливаем смещение
+                cumulativeX += deltaX;
+                cumulativeY += deltaY;
+
+                prevX = currentX;
+                prevY = currentY;
             }
 
-            // Добавляем оставшееся смещение
+            // Добавляем последнее накопленное смещение
             if (cumulativeX != 0 || cumulativeY != 0) {
                 snakeBuilder.addPoints(GameState.Coord.newBuilder().setX(cumulativeX).setY(cumulativeY).build());
             }
         }
 
         snakeBuilder.setPlayerId(snake.getPlayerID());
+        snakeBuilder.setHeadDirection(snake.getHeadDirection());
+        snakeBuilder.setState(snake.getState());
         return snakeBuilder.build();
     }
 
@@ -89,8 +102,6 @@ public class Snake {
         GameState.Coord head = body.peekFirst();
         assert head != null;
         int dx = 0,dy = 0;
-
-        // Изменяем направление только если не пытаемся двигаться в противоположную сторону
 
         while (!nextDirection.isEmpty()) {
             Direction dir = nextDirection.remove();
@@ -134,6 +145,16 @@ public class Snake {
     }
 
     public void setNextDirection(Direction newDirection) {
+        if (!nextDirection.isEmpty()) {
+            // Предотвращение добавления направления, если оно противоположно текущему
+            Direction lastDirection = nextDirection.peek();
+            if (lastDirection == Direction.LEFT && newDirection == Direction.RIGHT ||
+                    lastDirection == Direction.RIGHT && newDirection == Direction.LEFT ||
+                    lastDirection == Direction.UP && newDirection == Direction.DOWN ||
+                    lastDirection == Direction.DOWN && newDirection == Direction.UP) {
+                return;
+            }
+        }
         nextDirection.add(newDirection);
     }
     public Deque<GameState.Coord> getBody() {

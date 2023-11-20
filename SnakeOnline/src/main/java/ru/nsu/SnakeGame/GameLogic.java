@@ -2,6 +2,9 @@ package ru.nsu.SnakeGame;
 
 import ru.nsu.SnakesProto.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class GameLogic {
     private final GameField gameField;
 
@@ -10,13 +13,26 @@ public class GameLogic {
     }
 
     public void update() {
+        if (gameField.getFoods().size() != gameField.amountOfFoodNeeded(gameField.getSnakes().size())) {
+            System.err.println("[GameLogic] Needed " + gameField.amountOfFoodNeeded(gameField.getSnakes().size()) + " apples");
+            List<GameState.Coord> newCoord = new ArrayList<>();
+            gameField.setFoods(newCoord);
+            for (int i = 0; i < gameField.amountOfFoodNeeded(gameField.getSnakes().size()); ++i) {
+                placeFood();
+            }
+        }
+
         for (Snake snake : gameField.getSnakes()) {
             snake.move(gameField);
             if (!snake.isAlive()) continue;
             // Проверяем столкновения с едой
             if (gameField.getFoods().contains(snake.getHead())) {
                 snake.grow();
-                gameField.removeFood(snake.getHead());
+
+                List<GameState.Coord> temp = gameField.getFoods();
+                temp.remove(snake.getHead());
+                gameField.setFoods(temp);
+
                 placeFood(); // Размещаем новую еду
             }
 
@@ -32,6 +48,16 @@ public class GameLogic {
         gameField.getSnakes().removeIf(snake -> !snake.isAlive());
     }
 
+    public void updateDirection(int playerId, Direction newDirection) {
+        for (Snake snake : gameField.getSnakes()) {
+            if (snake.getPlayerID() == playerId) {
+                snake.setNextDirection(newDirection);
+                return;
+            }
+        }
+        System.err.println("[GameLogic] updateDirection: PlayerID " + playerId + " not found!");
+    }
+
     public void placeFood() {
         // Размещаем еду в случайном месте на поле
         int x = (int) (Math.random() * gameField.getWidth());
@@ -42,7 +68,9 @@ public class GameLogic {
                 .build();
         // Убедимся, что еда не появится в занятой клетке
         if (!gameField.isCellOccupied(foodPosition)) {
-            gameField.addFood(foodPosition);
+            List<GameState.Coord> temp = gameField.getFoods();
+            temp.add(foodPosition);
+            gameField.setFoods(temp);
         } else {
             placeFood();
         }

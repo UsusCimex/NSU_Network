@@ -23,21 +23,21 @@ public class GameField {
         this.foods = new ArrayList<>();
     }
 
-    public List<GameState.Coord> findValidSnakePosition() {
+    public ArrayList<GameState.Coord> findValidSnakePosition() {
         Random random = new Random();
         int maxAttempts = 1000;
         int minSnakeSize = 3;
 
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
-            int x = random.nextInt(width - minSnakeSize); // Убедимся, что есть место для всей змейки
+            int x = random.nextInt(minSnakeSize,width - minSnakeSize - 3); // Убедимся, что есть место для всей змейки
             int y = random.nextInt(height);
 
-            List<GameState.Coord> initialPosition = new ArrayList<>();
+            ArrayList<GameState.Coord> initialPosition = new ArrayList<>();
             boolean validPosition = true;
 
             for (int i = 0; i < minSnakeSize; i++) {
                 GameState.Coord cell = GameState.Coord.newBuilder()
-                        .setX(x + i)
+                        .setX(x - i)
                         .setY(y)
                         .build();
 
@@ -56,20 +56,6 @@ public class GameField {
         throw new RuntimeException("Unable to find a valid position for the new snake");
     }
 
-    private boolean isPositionValidForSnake(GameState.Coord position, int minSize) {
-        for (int i = 0; i < minSize; i++) {
-            GameState.Coord cell = GameState.Coord.newBuilder()
-                    .setX(position.getX() + i)
-                    .setY(position.getY())
-                    .build();
-
-            if (isCellOccupied(cell)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     public boolean isCellOccupied(GameState.Coord cell) {
         for (Snake snake : snakes) {
             if (snake.getBody().contains(cell)) {
@@ -86,12 +72,16 @@ public class GameField {
     public int getHeight() {
         return height;
     }
-
-    public List<Snake> getSnakes() {
-        return snakes;
-    }
-    public List<GameState.Coord> getFoods() {
-        return foods;
+    public void updateSnake(Snake snake) {
+        for (Snake snk : snakes) {
+            if (snk.getPlayerID() == snake.getPlayerID()) {
+                snk.getBody().clear();
+                snk.getBody().addAll(snake.getBody());
+                return;
+            }
+        }
+        System.err.println("Add new snake(" + snake.getPlayerID() + ")");
+        addSnake(snake);
     }
     public void addSnake(Snake snake) {
         snakes.add(snake);
@@ -99,16 +89,16 @@ public class GameField {
     public int amountOfFoodNeeded(int playerCount) {
         return foodCoefficientA * playerCount + foodCoefficientB;
     }
-    public void addFood(GameState.Coord food) {
-        foods.add(food);
+    public List<Snake> getSnakes() {
+        return snakes;
+    }
+    public List<GameState.Coord> getFoods() {
+        return new ArrayList<>(foods);
     }
     public void setFoods(List<GameState.Coord> foods) {
         this.foods = foods;
     }
     public void setSnakes(List<Snake> snakes) {
         this.snakes = snakes;
-    }
-    public void removeFood(GameState.Coord food) {
-        foods.remove(food);
     }
 }

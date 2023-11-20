@@ -3,7 +3,6 @@ import java.net.*;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 
 import ru.nsu.SnakeGame.GameField;
@@ -24,7 +23,7 @@ public class SnakeServer {
     private long msgSeq = 0;
     private int stateOrder = 0;
     private String serverName;
-    private long delayMS = stateDelayMS;
+    private long delayMS = 1500;
     private GameLogic snakeGame = null;
     private ConcurrentHashMap<Integer, GamePlayer> players = new ConcurrentHashMap<>();
     private ConcurrentHashMap<InetSocketAddress, Integer> addressToPlayerId = new ConcurrentHashMap<>();
@@ -162,10 +161,15 @@ public class SnakeServer {
     }
 
     private void handleSteer(GameMessage message, InetAddress address, int port) {
-        // Обрабатка изменения направления змеи.
         GameMessage.SteerMsg steer = message.getSteer();
         int playerId = getPlayerIdByAddress(address, port);
-        updatePlayerDirection(playerId, steer.getDirection());
+
+        if (playerId != -1) {
+            Direction direction = steer.getDirection(); // Получение нового направления из сообщения
+            snakeGame.updateDirection(playerId, direction); // Обновление направления для змеи игрока
+        } else {
+            System.err.println("Unknown player from " + address + ":" + port);
+        }
     }
 
     private void handleJoin(GameMessage message, InetAddress address, int port) throws IOException {
@@ -173,11 +177,9 @@ public class SnakeServer {
         if (canPlayerJoin()) {
             int playerId = addNewPlayer(join.getPlayerName(), address, port, join.getRequestedRole());
 
-            // Find a valid position for the new snake
-            GameState.Coord initialPosition = snakeGame.getGameField().findValidSnakePosition();
+            ArrayList<GameState.Coord> initialPosition = snakeGame.getGameField().findValidSnakePosition();
 
-            // Create a new snake for the player and add it to the game
-            Snake newSnake = new Snake(new ArrayList<>(Collections.singletonList(initialPosition)), playerId);
+            Snake newSnake = new Snake(initialPosition, playerId);
             snakeGame.getGameField().addSnake(newSnake);
 
             sendAcknowledgement(playerId, address, port);
@@ -286,13 +288,6 @@ public class SnakeServer {
     private int getPlayerIdByAddress(InetAddress address, int port) {
         // Поиск ID игрока по адресу и порту
         return addressToPlayerId.getOrDefault(new InetSocketAddress(address, port), -1);
-    }
-    private void updatePlayerDirection(int playerId, Direction direction) {
-        // Обновление направления движения игрока
-        GamePlayer player = players.get(playerId);
-        if (player != null) {
-            // Здесь должен быть код для обновления направления игрока
-        }
     }
     private boolean canPlayerJoin() {
         return playerCount < maxPlayerCount;
