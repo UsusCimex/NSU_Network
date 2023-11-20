@@ -10,13 +10,20 @@ public class ServerInfo {
     private IntegerProperty online;
     private StringProperty areaSize;
     private IntegerProperty food;
+    private StringProperty serverIP;
+    private IntegerProperty serverPort;
 
-    public ServerInfo(String serverName, int online, String areaSize, int food) {
+    public ServerInfo(String serverName, int online, String areaSize, int food, String serverIP, int serverPort) {
         this.serverName = new SimpleStringProperty(serverName);
         this.online = new SimpleIntegerProperty(online);
         this.areaSize = new SimpleStringProperty(areaSize);
         this.food = new SimpleIntegerProperty(food);
+        this.serverIP = new SimpleStringProperty(serverIP);
+        this.serverPort = new SimpleIntegerProperty(serverPort);
     }
+
+    public StringProperty serverIPProperty() {return serverIP;}
+    public IntegerProperty serverPortProperty() {return serverPort;}
 
     public StringProperty serverNameProperty() {
         return serverName;

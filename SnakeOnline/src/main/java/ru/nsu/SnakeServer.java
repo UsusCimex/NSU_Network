@@ -90,6 +90,11 @@ public class SnakeServer {
             }
         });
 
+        serverListener.setDaemon(true);
+        announcementThread.setDaemon(true);
+        stateThread.setDaemon(true);
+        gameLoop.setDaemon(true);
+
         serverListener.start();
         announcementThread.start();
         stateThread.start();
@@ -98,7 +103,7 @@ public class SnakeServer {
 
     public void stop() {
         running = false;
-        socket.close();
+        if (socket != null) socket.close();
     }
 
     public void receiveMessage() throws IOException {

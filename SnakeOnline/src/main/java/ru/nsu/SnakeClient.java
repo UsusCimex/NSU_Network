@@ -1,7 +1,5 @@
 package ru.nsu;
 
-import com.google.protobuf.InvalidProtocolBufferException;
-import ru.nsu.SnakeGame.GameField;
 import ru.nsu.SnakesProto.*;
 import ru.nsu.patterns.Observer;
 
@@ -55,14 +53,17 @@ public class SnakeClient {
             }
         });
 
+        clientThread.setDaemon(true);
+        multicastClientThread.setDaemon(true);
+
         clientThread.start();
         multicastClientThread.start();
     }
 
     public void stop() {
         running = false;
-        socket.close();
-        multicastSocket.close();
+        if (socket != null) socket.close();
+        if (multicastSocket != null) multicastSocket.close();
     }
 
 
