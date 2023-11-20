@@ -2,8 +2,6 @@ package ru.nsu.SnakeGame;
 
 import ru.nsu.SnakesProto.*;
 
-import java.util.Random;
-
 public class GameLogic {
     private final GameField gameField;
 

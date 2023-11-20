@@ -23,22 +23,33 @@ public class GameField {
         this.foods = new ArrayList<>();
     }
 
-    public GameState.Coord findValidSnakePosition() {
+    public List<GameState.Coord> findValidSnakePosition() {
         Random random = new Random();
         int maxAttempts = 1000;
         int minSnakeSize = 3;
 
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
-            int x = random.nextInt(width);
+            int x = random.nextInt(width - minSnakeSize); // Убедимся, что есть место для всей змейки
             int y = random.nextInt(height);
 
-            GameState.Coord potentialPosition = GameState.Coord.newBuilder()
-                    .setX(x)
-                    .setY(y)
-                    .build();
+            List<GameState.Coord> initialPosition = new ArrayList<>();
+            boolean validPosition = true;
 
-            if (isPositionValidForSnake(potentialPosition, minSnakeSize)) {
-                return potentialPosition;
+            for (int i = 0; i < minSnakeSize; i++) {
+                GameState.Coord cell = GameState.Coord.newBuilder()
+                        .setX(x + i)
+                        .setY(y)
+                        .build();
+
+                if (isCellOccupied(cell)) {
+                    validPosition = false;
+                    break;
+                }
+                initialPosition.add(cell);
+            }
+
+            if (validPosition) {
+                return initialPosition;
             }
         }
 

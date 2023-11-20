@@ -24,7 +24,7 @@ public class SnakeServer {
     private long msgSeq = 0;
     private int stateOrder = 0;
     private String serverName;
-    private int delayMS = 800;
+    private long delayMS = stateDelayMS;
     private GameLogic snakeGame = null;
     private ConcurrentHashMap<Integer, GamePlayer> players = new ConcurrentHashMap<>();
     private ConcurrentHashMap<InetSocketAddress, Integer> addressToPlayerId = new ConcurrentHashMap<>();
@@ -33,7 +33,6 @@ public class SnakeServer {
     private int maxPlayerCount = 5;
     boolean running = false;
     private DatagramSocket socket;
-    private byte[] buf = new byte[256];
 
     public SnakeServer(String name, int port, GameField gameField, String serverIP) throws IOException {
         this.serverAddress = InetAddress.getByName(serverIP);
@@ -104,6 +103,7 @@ public class SnakeServer {
     }
 
     public void receiveMessage() throws IOException {
+        byte[] buf = new byte[256];
         DatagramPacket packet = new DatagramPacket(buf, buf.length);
         socket.receive(packet);
 
@@ -148,7 +148,7 @@ public class SnakeServer {
                                         .setWidth(field.getWidth())
                                         .setHeight(field.getHeight())
                                         .setFoodStatic(field.getFoods().size())
-                                        .setStateDelayMs(delayMS)
+                                        .setStateDelayMs((int) delayMS)
                                         .build())
                                 .setCanJoin(true)
                                 .setGameName(serverName)
@@ -202,13 +202,7 @@ public class SnakeServer {
 
         // Преобразуем каждую змею в структуру Snake из библиотеки Protobuf
         for (Snake snake : snakeGame.getGameField().getSnakes()) {
-            GameState.Snake.Builder snakeBuilder = GameState.Snake.newBuilder()
-                    .setPlayerId(snake.getPlayerID())
-                    .addAllPoints(snake.getBody())
-                    .setState(snake.getState())
-                    .setHeadDirection(snake.getHeadDirection());
-
-            gameStateBuilder.addSnakes(snakeBuilder.build());
+            gameStateBuilder.addSnakes(Snake.generateSnakeProto(snake));
         }
 
         // Добавляем игроков

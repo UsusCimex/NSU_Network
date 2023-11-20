@@ -28,81 +28,62 @@ public class Snake {
 
     public static Snake parseSnake(GameState.Snake snake) {
         ArrayList<GameState.Coord> bodySnake = new ArrayList<>();
-        GameState.Coord snakePointer = snake.getPoints(0);
-        bodySnake.add(snakePointer);
-        for (int i = 1; i < snake.getPointsCount(); ++i) {
-            GameState.Coord tailMove = bodySnake.get(i);
-            int x = snakePointer.getX();
-            int y = snakePointer.getY();
-            if (x > 0) {
-                for (int j = 0; j < tailMove.getX(); ++j) {
-                    snakePointer = GameState.Coord.newBuilder().setX(++x).setY(y).build();
-                    bodySnake.add(snakePointer);
-                }
-            } else if (x < 0) {
-                for (int j = 0; j > tailMove.getX(); --j) {
-                    snakePointer = GameState.Coord.newBuilder().setX(--x).setY(y).build();
-                    bodySnake.add(snakePointer);
-                }
-            } else if (y > 0) {
-                for (int j = 0; j < tailMove.getY(); ++j) {
-                    snakePointer = GameState.Coord.newBuilder().setX(x).setY(++y).build();
-                    bodySnake.add(snakePointer);
-                }
-            } else if (y < 0) {
-                for (int j = 0; j > tailMove.getY(); --j) {
-                    snakePointer = GameState.Coord.newBuilder().setX(x).setY(--y).build();
-                    bodySnake.add(snakePointer);
-                }
-            }
+        GameState.Coord head = snake.getPoints(0);
+        bodySnake.add(head);
+
+        int x = head.getX();
+        int y = head.getY();
+
+        for (int i = 1; i < snake.getPointsCount(); i++) {
+            GameState.Coord offset = snake.getPoints(i);
+            x += offset.getX();
+            y += offset.getY();
+            GameState.Coord newPoint = GameState.Coord.newBuilder().setX(x).setY(y).build();
+            bodySnake.add(newPoint);
         }
+
         return new Snake(bodySnake, snake.getPlayerId());
     }
 
     public static GameState.Snake generateSnakeProto(Snake snake) {
         GameState.Snake.Builder snakeBuilder = GameState.Snake.newBuilder();
-        Iterator<GameState.Coord> iterator = snake.getBody().iterator();
 
-        if (iterator.hasNext()) {
-            GameState.Coord headCoord = iterator.next();
-            snakeBuilder.addPoints(headCoord);
+        if (!snake.getBody().isEmpty()) {
+            Iterator<GameState.Coord> iterator = snake.getBody().iterator();
+            GameState.Coord prevCoord = iterator.next();
+            snakeBuilder.addPoints(prevCoord);
 
-            int pointX = headCoord.getX();
-            int pointY = headCoord.getY();
-
-            int oldOffsetX = 0;
-            int oldOffsetY = 0;
+            int cumulativeX = 0;
+            int cumulativeY = 0;
 
             while (iterator.hasNext()) {
-                GameState.Coord coord = iterator.next();
+                GameState.Coord currentCoord = iterator.next();
+                int offsetX = currentCoord.getX() - prevCoord.getX();
+                int offsetY = currentCoord.getY() - prevCoord.getY();
 
-                int nPointX = coord.getX();
-                int nPointY = coord.getY();
-
-                int offsetX = nPointX - pointX;
-                int offsetY = nPointY - pointY;
-
-                if (offsetX != 0 && offsetY != 0) {
-                    snakeBuilder.addPoints(GameState.Coord.newBuilder().setX(oldOffsetX).setY(oldOffsetX).build());
-                    pointX = nPointX;
-                    pointY = nPointY;
-                    offsetX -= oldOffsetX;
-                    offsetY -= oldOffsetY;
+                // Если змейка продолжает двигаться в том же направлении, накапливаем смещение
+                if ((cumulativeX == 0 || offsetX == 0) && (cumulativeY == 0 || offsetY == 0)) {
+                    cumulativeX += offsetX;
+                    cumulativeY += offsetY;
+                } else {
+                    // Если направление изменилось, добавляем накопленное смещение и начинаем заново
+                    snakeBuilder.addPoints(GameState.Coord.newBuilder().setX(cumulativeX).setY(cumulativeY).build());
+                    cumulativeX = offsetX;
+                    cumulativeY = offsetY;
                 }
 
-                oldOffsetX = offsetX;
-                oldOffsetY = offsetY;
+                prevCoord = currentCoord;
             }
 
-            if (oldOffsetX != 0 && oldOffsetY != 0) {
-                snakeBuilder.addPoints(GameState.Coord.newBuilder().setX(oldOffsetX).setY(oldOffsetX).build());
+            // Добавляем оставшееся смещение
+            if (cumulativeX != 0 || cumulativeY != 0) {
+                snakeBuilder.addPoints(GameState.Coord.newBuilder().setX(cumulativeX).setY(cumulativeY).build());
             }
         }
 
         snakeBuilder.setPlayerId(snake.getPlayerID());
         return snakeBuilder.build();
     }
-
 
     public void move(GameField gameField) {
         GameState.Coord head = body.peekFirst();
