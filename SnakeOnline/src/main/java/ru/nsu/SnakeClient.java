@@ -12,18 +12,15 @@ public class SnakeClient {
     private Observer observer;
     private long msgSeq = 0;
     private DatagramSocket socket;
-    private InetAddress address;
+    private InetAddress serverAddress;
     private int serverPort;
     private GameField gameField = null;
     private byte[] buf = new byte[256];
     private boolean running = false;
 
-    public SnakeClient(String address, int serverPort, Observer observer) throws IOException {
+    public SnakeClient(String serverIP, int serverPort, Observer observer) throws IOException {
+        this.serverAddress = InetAddress.getByName(serverIP);
         this.socket = new DatagramSocket();
-        this.address = InetAddress.getByName(address);
-        InetSocketAddress multicastGroup = new InetSocketAddress(this.address, serverPort);
-        NetworkInterface networkInterface = NetworkInterface.getByInetAddress(this.address);
-        this.socket.joinGroup(multicastGroup, networkInterface);
         this.serverPort = serverPort;
         this.observer = observer;
     }
@@ -61,7 +58,7 @@ public class SnakeClient {
                         .build())
                 .build();
 
-        sendGameMessage(joinMessage, address, serverPort);
+        sendGameMessage(joinMessage, serverAddress, serverPort);
     }
 
     public void sendSteer(Direction direction) throws IOException {
@@ -72,7 +69,7 @@ public class SnakeClient {
                         .build())
                 .build();
 
-        sendGameMessage(steerMessage, address, serverPort);
+        sendGameMessage(steerMessage, serverAddress, serverPort);
     }
 
     public void receiveMessage() throws IOException {

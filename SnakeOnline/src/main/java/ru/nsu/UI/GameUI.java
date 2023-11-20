@@ -30,6 +30,7 @@ import java.util.*;
 
 public class GameUI extends Application implements Observer {
     private static final int CELL_SIZE = 15;
+    private String serverIP = "localhost";
     private long threshold = 3000;
 
     private BorderPane root;
@@ -72,6 +73,7 @@ public class GameUI extends Application implements Observer {
             Platform.exit();
         });
 
+        // Создадим поток, который будет получать ANNOUNCEMENT сообщения
         running = true;
         Thread serverListListener = new Thread(() -> {
             MulticastSocket multicastSocket = null;
@@ -87,7 +89,7 @@ public class GameUI extends Application implements Observer {
                         byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
 
                         GameMessage message = GameMessage.parseFrom(trimmedData);
-                        System.err.println("Get Multicast message: " + message.getTypeCase());
+                        System.err.println("[UI] Get Multicast message: " + message.getTypeCase());
                         if (message.getTypeCase() != GameMessage.TypeCase.ANNOUNCEMENT) continue;
                         update(message.getAnnouncement());
                     } catch (IOException e) {
@@ -241,7 +243,7 @@ public class GameUI extends Application implements Observer {
 
     private void startServer(String gameName, GameField gameField) {
         try {
-            server = new SnakeServer(gameName, 21212, gameField);
+            server = new SnakeServer(gameName, 21212, gameField, serverIP);
             server.start();
         } catch (IOException e) {
             System.err.println("Start server exception!");
@@ -251,7 +253,7 @@ public class GameUI extends Application implements Observer {
 
     private void startClient(String playerName) {
         try {
-            client = new SnakeClient(SnakeServer.MULTICAST_ADDRESS, SnakeServer.CLIENT_MULTICAST_PORT, this);
+            client = new SnakeClient(serverIP, SnakeServer.CLIENT_MULTICAST_PORT, this);
             client.start(playerName); // Start the client's network operations
         } catch (IOException e) {
             System.err.println("Start client exception!");

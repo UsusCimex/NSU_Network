@@ -24,6 +24,8 @@ public class SnakeServer {
     private MulticastSocket clientMulticastSocket;
     private InetAddress clientMulticastGroup;
 
+    private InetAddress serverAddress;
+
     private long msgSeq = 0;
     private int stateOrder = 0;
     private String serverName;
@@ -38,9 +40,10 @@ public class SnakeServer {
     private DatagramSocket socket;
     private byte[] buf = new byte[256];
 
-    public SnakeServer(String name, int port, GameField gameField) throws IOException {
+    public SnakeServer(String name, int port, GameField gameField, String serverIP) throws IOException {
+        this.serverAddress = InetAddress.getByName(serverIP);
         serverName = name;
-        socket = new DatagramSocket(port);
+        socket = new DatagramSocket(port, serverAddress); // Привязываем к конкретному адресу
         snakeGame = new GameLogic(gameField);
 
         gameMulticastGroup = InetAddress.getByName(MULTICAST_ADDRESS);
@@ -71,9 +74,8 @@ public class SnakeServer {
                     sendAnnouncement(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.GAME_MULTICAST_PORT);
                     Thread.sleep(announcementDelayMS);
                 } catch (InterruptedException | IOException e) {
-                    System.err.println("Announcement send error!");
+                    System.err.println("[Server] Announcement send error!");
                     running = false;
-                    throw new RuntimeException(e);
                 }
             }
         });
@@ -84,9 +86,8 @@ public class SnakeServer {
                     sendState(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.CLIENT_MULTICAST_PORT);
                     Thread.sleep(stateDelayMS);
                 } catch (InterruptedException | IOException e) {
-                    System.err.println("State send error!");
+                    System.err.println("[Server] State send error!");
                     running = false;
-                    throw new RuntimeException(e);
                 }
             }
         });
@@ -97,6 +98,7 @@ public class SnakeServer {
                     Thread.sleep(delayMS);
                     snakeGame.update();
                 } catch (InterruptedException e) {
+                    System.err.println("[Server] Game loop destroyed...");
                     running = false;
                     e.printStackTrace();
                 }
