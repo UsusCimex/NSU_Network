@@ -175,6 +175,9 @@ public class GameUI extends Application implements Observer {
     }
 
     private void gameExit() {
+        leaderboardTable.getItems().clear();
+        curGameInfo.getItems().clear();
+
         if (server != null) {
             server.stop();
             server = null;
@@ -253,7 +256,7 @@ public class GameUI extends Application implements Observer {
 
     private void startClient(String playerName) {
         try {
-            client = new SnakeClient(serverIP, SnakeServer.CLIENT_MULTICAST_PORT, this);
+            client = new SnakeClient(serverIP, 21212, this);
             client.start(playerName); // Start the client's network operations
         } catch (IOException e) {
             System.err.println("Start client exception!");
@@ -322,8 +325,8 @@ public class GameUI extends Application implements Observer {
         if (o instanceof GameMessage.StateMsg) {
             GameMessage.StateMsg stateMsg = (GameMessage.StateMsg) o;
             gameField.setFoods(stateMsg.getState().getFoodsList());
+            gameField.getSnakes().clear();
             for (GameState.Snake snake : stateMsg.getState().getSnakesList()) {
-                gameField.getSnakes().clear();
                 gameField.addSnake(Snake.parseSnake(snake));
             }
             render();

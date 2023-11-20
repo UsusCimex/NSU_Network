@@ -1,5 +1,6 @@
 package ru.nsu;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import ru.nsu.SnakeGame.GameField;
 import ru.nsu.SnakesProto.*;
 import ru.nsu.patterns.Observer;
@@ -14,13 +15,17 @@ public class SnakeClient {
     private DatagramSocket socket;
     private InetAddress serverAddress;
     private int serverPort;
-    private GameField gameField = null;
-    private byte[] buf = new byte[256];
     private boolean running = false;
+
+    private MulticastSocket multicastSocket;
+    private InetAddress multicastGroup;
 
     public SnakeClient(String serverIP, int serverPort, Observer observer) throws IOException {
         this.serverAddress = InetAddress.getByName(serverIP);
         this.socket = new DatagramSocket();
+        this.multicastSocket = new MulticastSocket(SnakeServer.CLIENT_MULTICAST_PORT);
+        this.multicastGroup = InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS);
+        this.multicastSocket.joinGroup(multicastGroup);
         this.serverPort = serverPort;
         this.observer = observer;
     }
@@ -39,12 +44,25 @@ public class SnakeClient {
                 }
             }
         });
+        Thread multicastClientThread = new Thread(() -> {
+            while (running) {
+                try {
+                    receiveMulticastMessage();
+                } catch (IOException ex) {
+                    System.err.println("[Client] Receive multicast message error!");
+                    running = false;
+                }
+            }
+        });
+
         clientThread.start();
+        multicastClientThread.start();
     }
 
     public void stop() {
         running = false;
         socket.close();
+        multicastSocket.close();
     }
 
 
@@ -72,29 +90,37 @@ public class SnakeClient {
         sendGameMessage(steerMessage, serverAddress, serverPort);
     }
 
-    public void receiveMessage() throws IOException {
-        DatagramPacket packet = new DatagramPacket(buf, buf.length);
+    private void receiveMessage() throws IOException {
+        byte[] buffer = new byte[256];
+        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         socket.receive(packet);
+        handlePacket(packet);
+    }
 
-        InetAddress address = packet.getAddress();
-        int port = packet.getPort();
+    private void receiveMulticastMessage() throws IOException {
+        byte[] buffer = new byte[256];
+        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+        multicastSocket.receive(packet);
+        handlePacket(packet);
+    }
 
+    private void handlePacket(DatagramPacket packet) throws IOException {
         byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
 
         GameMessage message = GameMessage.parseFrom(trimmedData);
-        System.err.println("[Client] listened " + message.getTypeCase() + " from " + address + ":" + port);
+        System.err.println("[Client] listened " + message.getTypeCase());
         switch (message.getTypeCase()) {
-            case PING  -> handlePing(message, address, serverPort);
-            case STEER -> handleSteer(message, address, serverPort);
-            case JOIN  -> handleJoin(message, address, serverPort);
-            case ANNOUNCEMENT -> handleAnnouncement(message, address, serverPort);
-            case STATE -> handleState(message, address, serverPort);
-            case ACK   -> handleAck(message, address, serverPort);
-            case ERROR -> handleError(message, address, serverPort);
-            case ROLE_CHANGE -> handleRoleChange(message, address, serverPort);
+            case PING  -> handlePing(message, serverAddress, serverPort);
+            case STEER -> handleSteer(message, serverAddress, serverPort);
+            case JOIN  -> handleJoin(message, serverAddress, serverPort);
+            case ANNOUNCEMENT -> handleAnnouncement(message, serverAddress, serverPort);
+            case STATE -> handleState(message, serverAddress, serverPort);
+            case ACK   -> handleAck(message, serverAddress, serverPort);
+            case ERROR -> handleError(message, serverAddress, serverPort);
+            case ROLE_CHANGE -> handleRoleChange(message, serverAddress, serverPort);
             default    -> {
-                System.err.println("Unknown message type (" + message.getTypeCase() + ") from " + address.toString() + serverPort);
-                sendError("Unknown message type", address, serverPort);
+                System.err.println("Unknown message type (" + message.getTypeCase() + ") from " + serverAddress.toString() + serverPort);
+                sendError("Unknown message type", serverAddress, serverPort);
             }
         }
     }

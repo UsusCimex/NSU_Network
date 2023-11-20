@@ -83,7 +83,6 @@ public class GameField {
         return foods;
     }
     public void addSnake(Snake snake) {
-        System.err.println("Add snake: " + snake.getBody().size());
         snakes.add(snake);
     }
     public int amountOfFoodNeeded(int playerCount) {

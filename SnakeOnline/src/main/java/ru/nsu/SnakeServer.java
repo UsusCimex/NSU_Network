@@ -19,11 +19,6 @@ public class SnakeServer {
     private long announcementDelayMS = 1000;
     private long stateDelayMS = 1000;
 
-    private MulticastSocket gameMulticastSocket;
-    private InetAddress gameMulticastGroup;
-    private MulticastSocket clientMulticastSocket;
-    private InetAddress clientMulticastGroup;
-
     private InetAddress serverAddress;
 
     private long msgSeq = 0;
@@ -45,14 +40,6 @@ public class SnakeServer {
         serverName = name;
         socket = new DatagramSocket(port, serverAddress); // Привязываем к конкретному адресу
         snakeGame = new GameLogic(gameField);
-
-        gameMulticastGroup = InetAddress.getByName(MULTICAST_ADDRESS);
-        gameMulticastSocket = new MulticastSocket(GAME_MULTICAST_PORT);
-        gameMulticastSocket.joinGroup(gameMulticastGroup);
-
-        clientMulticastGroup = InetAddress.getByName(MULTICAST_ADDRESS);
-        clientMulticastSocket = new MulticastSocket(CLIENT_MULTICAST_PORT);
-        clientMulticastSocket.joinGroup(clientMulticastGroup);
     }
 
     public void start() throws IOException {
@@ -114,8 +101,6 @@ public class SnakeServer {
     public void stop() {
         running = false;
         socket.close();
-        gameMulticastSocket.close();
-        clientMulticastSocket.close();
     }
 
     public void receiveMessage() throws IOException {
