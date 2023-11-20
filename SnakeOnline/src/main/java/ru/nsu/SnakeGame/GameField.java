@@ -4,6 +4,7 @@ import ru.nsu.SnakesProto.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 public class GameField {
     private final int width;
@@ -21,6 +22,52 @@ public class GameField {
         this.snakes = new ArrayList<>();
         this.foods = new ArrayList<>();
     }
+
+    public GameState.Coord findValidSnakePosition() {
+        Random random = new Random();
+        int maxAttempts = 1000;
+        int minSnakeSize = 3;
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            int x = random.nextInt(width);
+            int y = random.nextInt(height);
+
+            GameState.Coord potentialPosition = GameState.Coord.newBuilder()
+                    .setX(x)
+                    .setY(y)
+                    .build();
+
+            if (isPositionValidForSnake(potentialPosition, minSnakeSize)) {
+                return potentialPosition;
+            }
+        }
+
+        throw new RuntimeException("Unable to find a valid position for the new snake");
+    }
+
+    private boolean isPositionValidForSnake(GameState.Coord position, int minSize) {
+        for (int i = 0; i < minSize; i++) {
+            GameState.Coord cell = GameState.Coord.newBuilder()
+                    .setX(position.getX() + i)
+                    .setY(position.getY())
+                    .build();
+
+            if (isCellOccupied(cell)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public boolean isCellOccupied(GameState.Coord cell) {
+        for (Snake snake : snakes) {
+            if (snake.getBody().contains(cell)) {
+                return true;
+            }
+        }
+        return foods.contains(cell);
+    }
+
     public int getWidth() {
         return width;
     }
@@ -36,6 +83,7 @@ public class GameField {
         return foods;
     }
     public void addSnake(Snake snake) {
+        System.err.println("Add snake: " + snake.getBody().size());
         snakes.add(snake);
     }
     public int amountOfFoodNeeded(int playerCount) {

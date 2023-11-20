@@ -8,11 +8,11 @@ import java.util.*;
 public class Snake {
     private final Deque<GameState.Coord> body; // Тело змеи, где body.peekFirst() - это голова
     private Direction direction; // Текущее направление змеи
-    private Queue<Direction> nextDirection;
+    private final Queue<Direction> nextDirection;
     private GameState.Snake.SnakeState state;
     private boolean alive;
     private final Color color;
-    private int playerID;
+    private final int playerID;
 
     public Snake(ArrayList<GameState.Coord> initialPosition, int playerID) {
         body = new ArrayDeque<>();

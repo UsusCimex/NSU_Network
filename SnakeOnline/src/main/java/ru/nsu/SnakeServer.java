@@ -1,7 +1,9 @@
 package ru.nsu;
 import java.net.*;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 
 import ru.nsu.SnakeGame.GameField;
@@ -10,38 +12,61 @@ import ru.nsu.SnakeGame.Snake;
 import ru.nsu.SnakesProto.*;
 
 public class SnakeServer {
+    public static final String MULTICAST_ADDRESS = "224.0.0.1";
+    public static final int GAME_MULTICAST_PORT = 8888;
+    public static final int CLIENT_MULTICAST_PORT = 8889;
+
+    private MulticastSocket gameMulticastSocket;
+    private InetAddress gameMulticastGroup;
+    private MulticastSocket clientMulticastSocket;
+    private InetAddress clientMulticastGroup;
+
     private long msgSeq = 0;
     private int stateOrder = 0;
     private String serverName;
     private int delayMS = 800;
-    private GameLogic snakeGame;
+    private GameLogic snakeGame = null;
     private ConcurrentHashMap<Integer, GamePlayer> players = new ConcurrentHashMap<>();
     private ConcurrentHashMap<InetSocketAddress, Integer> addressToPlayerId = new ConcurrentHashMap<>();
     private int currentMaxId = 0;  // Простой способ генерировать ID для новых игроков
     private int playerCount = 0;
     private int maxPlayerCount = 5;
-
+    boolean running = false;
     private DatagramSocket socket;
     private byte[] buf = new byte[256];
-    private static final String MULTICAST_ADDRESS = "224.0.0.1";
-    private static final int MULTICAST_PORT = 8888;
-
-    private MulticastSocket multicastSocket;
-    private InetAddress multicastGroup;
-    private int multicastGroupPort = 21212;
 
     public SnakeServer(String name, int port, GameField gameField) throws IOException {
         serverName = name;
         socket = new DatagramSocket(port);
         snakeGame = new GameLogic(gameField);
 
-        multicastGroup = InetAddress.getByName(MULTICAST_ADDRESS);
-        multicastSocket = new MulticastSocket(MULTICAST_PORT);
-        multicastSocket.joinGroup(multicastGroup);
+        gameMulticastGroup = InetAddress.getByName(MULTICAST_ADDRESS);
+        gameMulticastSocket = new MulticastSocket(GAME_MULTICAST_PORT);
+        gameMulticastSocket.joinGroup(gameMulticastGroup);
+
+        clientMulticastGroup = InetAddress.getByName(MULTICAST_ADDRESS);
+        clientMulticastSocket = new MulticastSocket(CLIENT_MULTICAST_PORT);
+        clientMulticastSocket.joinGroup(clientMulticastGroup);
+
+        startGameLoop();
     }
 
-    public void setSnakeGame(GameLogic snakeGameLogic) {
-        this.snakeGame = snakeGameLogic;
+    public void startGameLoop() {
+        new Thread(() -> {
+            running = true;
+            while (running) {
+                try {
+                    Thread.sleep(delayMS); // Adjust the delay according to your requirements
+                    snakeGame.update();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }).start();
+    }
+
+    public void stopGameLoop() {
+        running = false;
     }
 
     public void receiveMessage() throws IOException {
@@ -54,7 +79,7 @@ public class SnakeServer {
         int port = packet.getPort();
 
         GameMessage message = GameMessage.parseFrom(trimmedData);
-        System.err.println("[Server] listened " + message.getTypeCase());
+        System.err.println("[Server] listened " + message.getTypeCase() + " from " + address + ":" + port);
         switch (message.getTypeCase()) {
             case PING  -> handlePing(message, address, port);
             case STEER -> handleSteer(message, address, port);
@@ -110,17 +135,26 @@ public class SnakeServer {
     }
 
     private void handleJoin(GameMessage message, InetAddress address, int port) throws IOException {
-        // Обработка запроса на присоединение к игре.
         GameMessage.JoinMsg join = message.getJoin();
         if (canPlayerJoin()) {
             int playerId = addNewPlayer(join.getPlayerName(), address, port, join.getRequestedRole());
+
+            // Find a valid position for the new snake
+            GameState.Coord initialPosition = snakeGame.getGameField().findValidSnakePosition();
+
+            // Create a new snake for the player and add it to the game
+            Snake newSnake = new Snake(new ArrayList<>(Collections.singletonList(initialPosition)), playerId);
+            snakeGame.getGameField().addSnake(newSnake);
+
             sendAcknowledgement(playerId, address, port);
             sendState(address, port);
         } else {
-            System.err.println("Player " + join.getPlayerName() + " cannot join game");
-            sendError("Cannot join game: no space", address, port);
+            System.err.println("Player " + join.getPlayerName() + " cannot join the game");
+            sendError("Cannot join the game: no space", address, port);
         }
     }
+
+
 
     public void sendState(InetAddress address, int port) throws IOException {
         GameMessage stateMessage = createStateMessage();
@@ -248,20 +282,5 @@ public class SnakeServer {
         players.put(playerId, player);
         addressToPlayerId.put(new InetSocketAddress(address, port), playerId);
         return playerId;
-    }
-
-    public static InetAddress getMulticastAddress() throws UnknownHostException {
-        return InetAddress.getByName(MULTICAST_ADDRESS);
-    }
-    public static int getMulticastPort() {
-        return MULTICAST_PORT;
-    }
-
-    public InetAddress getMulticastGroup() {
-        return multicastGroup;
-    }
-
-    public int getMulticastGroupPort() {
-        return multicastGroupPort;
     }
 }

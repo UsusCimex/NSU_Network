@@ -2,6 +2,8 @@ package ru.nsu.SnakeGame;
 
 import ru.nsu.SnakesProto.*;
 
+import java.util.Random;
+
 public class GameLogic {
     private final GameField gameField;
 
@@ -41,20 +43,11 @@ public class GameLogic {
                 .setY(y)
                 .build();
         // Убедимся, что еда не появится в занятой клетке
-        if (!isCellOccupied(foodPosition)) {
+        if (!gameField.isCellOccupied(foodPosition)) {
             gameField.addFood(foodPosition);
         } else {
             placeFood();
         }
-    }
-
-    private boolean isCellOccupied(GameState.Coord cell) {
-        for (Snake snake : gameField.getSnakes()) {
-            if (snake.getBody().contains(cell)) {
-                return true;
-            }
-        }
-        return gameField.getFoods().contains(cell);
     }
 
     public GameField getGameField() {

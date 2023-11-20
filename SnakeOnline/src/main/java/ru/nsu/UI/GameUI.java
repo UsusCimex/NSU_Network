@@ -23,9 +23,10 @@ import ru.nsu.SnakesProto.*;
 import ru.nsu.patterns.Observer;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.net.DatagramPacket;
+import java.net.InetAddress;
+import java.net.MulticastSocket;
+import java.util.*;
 
 public class GameUI extends Application implements Observer {
     private static final int CELL_SIZE = 15;
@@ -41,9 +42,10 @@ public class GameUI extends Application implements Observer {
     private TableView<ServerInfo> curGameInfo;
 
     private TableView<ServerInfo> serverList = new TableView<>();
-    private Map<ServerInfo, Long> serverTimestamp = new HashMap<>();
+    private Map<String, Timer> serverTimers = new HashMap<>();
 
     private GameField gameField = null;
+    private boolean running = false;
 
     private SnakeServer server = null;
     private boolean serverWorking = false;
@@ -70,10 +72,38 @@ public class GameUI extends Application implements Observer {
         stage.show();
 
         stage.setOnCloseRequest(event -> {
-            serverWorking = false;
+            gameExit();
             clientWorking = false;
             Platform.exit();
         });
+
+        running = true;
+        Thread serverListListener = new Thread(() -> {
+            MulticastSocket multicastSocket = null;
+            try {
+                multicastSocket = new MulticastSocket(SnakeServer.GAME_MULTICAST_PORT);
+                multicastSocket.joinGroup(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS));
+                while (running) {
+                    try {
+                        byte[] buf = new byte[256];
+                        DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                        multicastSocket.receive(packet);
+
+                        byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
+
+                        GameMessage message = GameMessage.parseFrom(trimmedData);
+                        System.err.println("Get Multicast message: " + message.getTypeCase());
+                        if (message.getTypeCase() != GameMessage.TypeCase.ANNOUNCEMENT) continue;
+                        update(message.getAnnouncement());
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        serverListListener.start();
     }
 
     private void clearGameGrid() {
@@ -149,7 +179,10 @@ public class GameUI extends Application implements Observer {
 
     private void gameExit() {
         serverWorking = false;
-        server = null;
+        if (server != null) {
+            server.stopGameLoop();
+            server = null;
+        }
 
         clientWorking = false;
         client = null;
@@ -194,7 +227,7 @@ public class GameUI extends Application implements Observer {
             gameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
             try {
                 createServer(gameName, 21212);
-                createClient(playerName, "localhost", 21212);
+                createClient(playerName, SnakeServer.MULTICAST_ADDRESS, SnakeServer.CLIENT_MULTICAST_PORT);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -227,7 +260,7 @@ public class GameUI extends Application implements Observer {
                     server.receiveMessage();
                 } catch (IOException e) {
                     System.err.println("Receive message error!");
-                    serverWorking = false;
+                    gameExit();
                     throw new RuntimeException(e);
                 }
             }
@@ -236,12 +269,11 @@ public class GameUI extends Application implements Observer {
         Thread announcementThread = new Thread(() -> {
             while (serverWorking) {
                 try {
-                    System.err.println("[Server] start send announcement...");
-                    server.sendAnnouncement(SnakeServer.getMulticastAddress(), SnakeServer.getMulticastPort());
+                    server.sendAnnouncement(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.GAME_MULTICAST_PORT);
                     Thread.sleep(announcementDelayMS);
                 } catch (InterruptedException | IOException e) {
                     System.err.println("Announcement send error!");
-                    serverWorking = false;
+                    gameExit();
                     throw new RuntimeException(e);
                 }
             }
@@ -250,12 +282,11 @@ public class GameUI extends Application implements Observer {
         Thread stateThread = new Thread(() -> {
             while (serverWorking) {
                 try {
-                    System.err.println("[Server] start send state...");
-                    server.sendState(server.getMulticastGroup(), server.getMulticastGroupPort());
+                    server.sendState(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.CLIENT_MULTICAST_PORT);
                     Thread.sleep(stateDelayMS);
                 } catch (InterruptedException | IOException e) {
                     System.err.println("State send error!");
-                    serverWorking = false;
+                    gameExit();
                     throw new RuntimeException(e);
                 }
             }
@@ -392,38 +423,47 @@ public class GameUI extends Application implements Observer {
     }
 
     private void updateServerList(GameMessage.AnnouncementMsg announcementMsg) {
-        GameAnnouncement announcement = announcementMsg.getGames(0);
-        GameConfig gameConfig = announcement.getConfig();
-        GamePlayers players = announcement.getPlayers();
-        int playerCount = players.getPlayersCount();
-        int foodCount = gameConfig.getFoodStatic();
-        String gameName = announcement.getGameName();
-        int width = gameConfig.getWidth();
-        int height = gameConfig.getHeight();
+        for (GameAnnouncement gameAnnouncement : announcementMsg.getGamesList()) {
+            String gameName = gameAnnouncement.getGameName();
 
-        ServerInfo serverInfo = new ServerInfo(gameName, playerCount,
-                String.format("%dx%d", width, height), foodCount);
+            // Check if the game is already in the list
+            boolean exists = false;
+            for (ServerInfo server : serverList.getItems()) {
+                if (server.serverNameProperty().get().equals(gameName)) {
+                    exists = true;
+                    resetTimerForServer(gameName);
+                    break;
+                }
+            }
 
-        serverTimestamp.put(serverInfo, System.currentTimeMillis());
-        serverList.getItems().add(serverInfo);
-
-        removeInactiveServers();
-        serverList.refresh();
-    }
-
-    private void removeInactiveServers() {
-        long currentTime = System.currentTimeMillis();
-        Iterator<Map.Entry<ServerInfo, Long>> iterator = serverTimestamp.entrySet().iterator();
-
-        while (iterator.hasNext()) {
-            Map.Entry<ServerInfo, Long> entry = iterator.next();
-            ServerInfo serverInfo = entry.getKey();
-            long lastUpdate = entry.getValue();
-
-            if (currentTime - lastUpdate > threshold) {
-                iterator.remove(); // Удаляем из мапы
-                serverList.getItems().remove(serverInfo); // Удаляем из таблицы
+            if (!exists) {
+                serverList.getItems().add(new ServerInfo(gameName,
+                        gameAnnouncement.getPlayers().getPlayersCount(),
+                        String.format("%dx%d", gameAnnouncement.getConfig().getWidth(),gameAnnouncement.getConfig().getHeight()),
+                        gameAnnouncement.getConfig().getFoodStatic()));
+                startTimerForServer(gameName);
             }
         }
+    }
+
+    private void resetTimerForServer(String gameName) {
+        Timer existingTimer = serverTimers.get(gameName);
+        if (existingTimer != null) {
+            existingTimer.cancel();
+        }
+        startTimerForServer(gameName);
+    }
+
+    private void startTimerForServer(String gameName) {
+        Timer timer = new Timer();
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                Platform.runLater(() -> {
+                    serverList.getItems().removeIf(server -> server.serverNameProperty().get().equals(gameName));
+                });
+            }
+        }, 3000);
+        serverTimers.put(gameName, timer);
     }
 }

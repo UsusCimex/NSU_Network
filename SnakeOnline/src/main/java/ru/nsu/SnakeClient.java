@@ -17,9 +17,12 @@ public class SnakeClient {
     private GameField gameField = null;
     private byte[] buf = new byte[256];
 
-    public SnakeClient(String address, int serverPort, Observer observer) throws UnknownHostException, SocketException {
+    public SnakeClient(String address, int serverPort, Observer observer) throws IOException {
         this.socket = new DatagramSocket();
         this.address = InetAddress.getByName(address);
+        InetSocketAddress multicastGroup = new InetSocketAddress(this.address, serverPort);
+        NetworkInterface networkInterface = NetworkInterface.getByInetAddress(this.address);
+        this.socket.joinGroup(multicastGroup, networkInterface);
         this.serverPort = serverPort;
         this.observer = observer;
     }
@@ -34,9 +37,7 @@ public class SnakeClient {
                         .build())
                 .build();
 
-        buf = joinMessage.toByteArray();
-        DatagramPacket packet = new DatagramPacket(buf, buf.length, address, serverPort);
-        socket.send(packet);
+        sendGameMessage(joinMessage, address, serverPort);
     }
 
     public void sendSteer(Direction direction) throws IOException {
@@ -47,19 +48,20 @@ public class SnakeClient {
                         .build())
                 .build();
 
-        buf = steerMessage.toByteArray();
-        DatagramPacket packet = new DatagramPacket(buf, buf.length, address, serverPort);
-        socket.send(packet);
+        sendGameMessage(steerMessage, address, serverPort);
     }
 
     public void receiveMessage() throws IOException {
         DatagramPacket packet = new DatagramPacket(buf, buf.length);
         socket.receive(packet);
 
+        InetAddress address = packet.getAddress();
+        int port = packet.getPort();
+
         byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
 
         GameMessage message = GameMessage.parseFrom(trimmedData);
-        System.err.println("[Client] listened " + message.getTypeCase());
+        System.err.println("[Client] listened " + message.getTypeCase() + " from " + address + ":" + port);
         switch (message.getTypeCase()) {
             case PING  -> handlePing(message, address, serverPort);
             case STEER -> handleSteer(message, address, serverPort);
@@ -126,7 +128,7 @@ public class SnakeClient {
     private void sendGameMessage(GameMessage gameMessage, InetAddress address, int port) throws IOException {
         byte[] buffer = gameMessage.toByteArray();
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, port);
-        System.err.println("[Server] Send message " + gameMessage.getTypeCase() + " to " + address + ":" + port);
+        System.err.println("[Client] Send message " + gameMessage.getTypeCase() + " to " + address + ":" + port);
         socket.send(packet);
     }
 }
