@@ -339,16 +339,6 @@ public class GameUI extends Application implements Observer {
         }
     }
 
-    private void startClient(String playerName) {
-        try {
-            client = new SnakeClient(serverIP, 21212, this);
-            client.start(playerName); // Start the client's network operations
-        } catch (IOException e) {
-            System.err.println("Start client exception!");
-            throw new RuntimeException(e);
-        }
-    }
-
     private void handleKeyPress(KeyCode code) {
         if (client != null) {
             try {

@@ -85,6 +85,9 @@ public class GameField {
     public void addSnake(Snake snake) {
         snakes.add(snake);
     }
+    public void removeSnake(Snake snake) {
+        snakes.remove(snake);
+    }
     public int amountOfFoodNeeded(int playerCount) {
         return foodCoefficientA * playerCount + foodCoefficientB;
     }

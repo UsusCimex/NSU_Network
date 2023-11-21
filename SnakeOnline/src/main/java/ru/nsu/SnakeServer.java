@@ -72,7 +72,6 @@ public class SnakeServer {
         gameLoop = new Thread(() -> {
             while (running) {
                 try {
-                    if (snakeGame.getGameField().getSnakes().isEmpty()) continue;
                     Thread.sleep(delayMS);
                     snakeGame.update();
                     updatePlayersScore();
