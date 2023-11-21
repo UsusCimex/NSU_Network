@@ -33,8 +33,8 @@ import java.util.*;
 
 public class GameUI extends Application implements Observer {
     private static double CELL_SIZE;
-    private String serverIP = "localhost";
-    private long threshold = 3000;
+    private final String serverIP = "localhost";
+    private final long threshold = 3000;
 
     private BorderPane root;
     private GridPane gameGrid;
@@ -73,6 +73,7 @@ public class GameUI extends Application implements Observer {
         root.setLeft(gameGrid);
         VBox rightPanel = createRightPanel();
         root.setRight(rightPanel);
+        updateButtonsState();
 
         Scene scene = new Scene(root);
         scene.setOnKeyPressed(event -> handleKeyPress(event.getCode()));
@@ -84,6 +85,10 @@ public class GameUI extends Application implements Observer {
             receiveAnnouncementCicle = false;
             if (announcementMulticastSocket != null) announcementMulticastSocket.close();
             if (serverListListener != null) serverListListener.interrupt();
+
+            for (Timer timer : serverTimers.values()) {
+                timer.cancel();
+            }
             Platform.exit();
         });
 
@@ -225,6 +230,7 @@ public class GameUI extends Application implements Observer {
             client.start(playerName);
             running = true;
             updateButtonsState(); // Обновление состояния кнопок
+            updateCurGameInfo(serverInfo);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -258,6 +264,8 @@ public class GameUI extends Application implements Observer {
             client.stop();
             client = null;
         }
+
+        updateButtonsState();
     }
 
     private void openCreateGameForm() {
@@ -416,8 +424,6 @@ public class GameUI extends Application implements Observer {
 
         // Iterate through the players in the gamePlayers message
         for (GamePlayer player : gamePlayers.getPlayersList()) {
-            int playerId = player.getId();
-
             // Update the PlayerInfo object with the player's information
             PlayerInfo playerInfo = new PlayerInfo(
                     getPlace(gamePlayers, player),
@@ -498,6 +504,13 @@ public class GameUI extends Application implements Observer {
             }
         }, threshold);
         serverTimers.put(gameName, timer);
+    }
+
+    private void updateCurGameInfo(ServerInfo serverInfo) {
+        Platform.runLater(() -> {
+            curGameInfo.getItems().clear();
+            curGameInfo.getItems().add(serverInfo);
+        });
     }
 
     private void updateButtonsState() {

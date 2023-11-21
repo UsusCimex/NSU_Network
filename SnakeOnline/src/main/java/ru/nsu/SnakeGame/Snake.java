@@ -13,6 +13,7 @@ public class Snake {
     private boolean alive;
     private final Color color;
     private final int playerID;
+    private int score;
 
     public Snake(ArrayList<GameState.Coord> initialPosition, int playerID) {
         body = new ArrayDeque<>();
@@ -22,6 +23,7 @@ public class Snake {
         this.nextDirection = new LinkedList<>();
         this.state = GameState.Snake.SnakeState.ALIVE;
         alive = true;
+        score = 0;
         Random random = new Random();
         this.color = Color.rgb(random.nextInt(256), random.nextInt(256), random.nextInt(256));
     }
@@ -188,6 +190,15 @@ public class Snake {
     }
     public int getPlayerID() {
         return playerID;
+    }
+    public void setScore(int score) {
+        this.score = score;
+    }
+    public int getScore() {
+        return score;
+    }
+    public void addScore(int val) {
+        score += val;
     }
 }
 

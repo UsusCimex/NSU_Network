@@ -75,6 +75,7 @@ public class SnakeServer {
                     if (snakeGame.getGameField().getSnakes().isEmpty()) continue;
                     Thread.sleep(delayMS);
                     snakeGame.update();
+                    updatePlayersScore();
                     sendState(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.CLIENT_MULTICAST_PORT);
                 } catch (IOException | InterruptedException e) {
                     System.err.println("[Server] Game loop destroyed...");
@@ -88,6 +89,19 @@ public class SnakeServer {
         gameLoop.start();
     }
 
+    public void updatePlayersScore() {
+        for (Snake snake : snakeGame.getGameField().getSnakes()) {
+            int playerId = snake.getPlayerID();
+            GamePlayer player = players.get(playerId);
+            if (player != null) {
+                GamePlayer updatedPlayer = GamePlayer.newBuilder()
+                        .mergeFrom(player)
+                        .setScore(snake.getScore())
+                        .build();
+                players.put(playerId, updatedPlayer);
+            }
+        }
+    }
     public void stop() {
         running = false;
         if (socket != null) socket.close();
