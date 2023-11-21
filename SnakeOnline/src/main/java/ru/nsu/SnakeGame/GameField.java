@@ -75,8 +75,7 @@ public class GameField {
     public void updateSnake(Snake snake) {
         for (Snake snk : snakes) {
             if (snk.getPlayerID() == snake.getPlayerID()) {
-                snk.getBody().clear();
-                snk.getBody().addAll(snake.getBody());
+                snk.setBody(snake.getBody());
                 return;
             }
         }
@@ -90,7 +89,7 @@ public class GameField {
         return foodCoefficientA * playerCount + foodCoefficientB;
     }
     public List<Snake> getSnakes() {
-        return snakes;
+        return new ArrayList<>(snakes);
     }
     public List<GameState.Coord> getFoods() {
         return new ArrayList<>(foods);

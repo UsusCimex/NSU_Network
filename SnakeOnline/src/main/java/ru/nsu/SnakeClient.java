@@ -18,6 +18,9 @@ public class SnakeClient {
     private MulticastSocket multicastSocket;
     private InetAddress multicastGroup;
 
+    Thread clientThread;
+    Thread multicastClientThread;
+
     public SnakeClient(String serverIP, int serverPort, Observer observer) throws IOException {
         this.serverAddress = InetAddress.getByName(serverIP);
         this.socket = new DatagramSocket();
@@ -32,7 +35,7 @@ public class SnakeClient {
         sendJoinRequest(playerName);
 
         running = true;
-        Thread clientThread = new Thread(() -> {
+        clientThread = new Thread(() -> {
             while (running) {
                 try {
                     receiveMessage();
@@ -42,7 +45,7 @@ public class SnakeClient {
                 }
             }
         });
-        Thread multicastClientThread = new Thread(() -> {
+        multicastClientThread = new Thread(() -> {
             while (running) {
                 try {
                     receiveMulticastMessage();
@@ -53,9 +56,6 @@ public class SnakeClient {
             }
         });
 
-        clientThread.setDaemon(true);
-        multicastClientThread.setDaemon(true);
-
         clientThread.start();
         multicastClientThread.start();
     }
@@ -64,6 +64,9 @@ public class SnakeClient {
         running = false;
         if (socket != null) socket.close();
         if (multicastSocket != null) multicastSocket.close();
+
+        if (clientThread != null) clientThread.interrupt();
+        if (multicastClientThread != null) multicastClientThread.interrupt();
     }
 
 

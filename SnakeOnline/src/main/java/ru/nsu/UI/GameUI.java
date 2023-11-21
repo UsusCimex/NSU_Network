@@ -58,6 +58,8 @@ public class GameUI extends Application implements Observer {
     private Button createGameButton;
     private Button exitGameButton;
 
+    Thread serverListListener;
+
     @Override
     public void start(Stage stage) {
         // Игровое поле
@@ -66,7 +68,7 @@ public class GameUI extends Application implements Observer {
         gameGrid.setAlignment(Pos.CENTER);
 
         root = new BorderPane();
-        root.setPrefSize(1400, 1000);
+        root.setPrefSize(1000, 700);
 
         root.setLeft(gameGrid);
         VBox rightPanel = createRightPanel();
@@ -79,37 +81,37 @@ public class GameUI extends Application implements Observer {
 
         stage.setOnCloseRequest(event -> {
             gameExit();
+            receiveAnnouncementCicle = false;
+            if (announcementMulticastSocket != null) announcementMulticastSocket.close();
+            if (serverListListener != null) serverListListener.interrupt();
             Platform.exit();
         });
 
         // Создадим поток, который будет получать ANNOUNCEMENT сообщения
         receiveAnnouncementCicle = true;
-        Thread serverListListener = new Thread(() -> {
+        serverListListener = new Thread(() -> {
             try {
                 announcementMulticastSocket = new MulticastSocket(SnakeServer.GAME_MULTICAST_PORT);
                 announcementMulticastSocket.joinGroup(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS));
+
                 while (receiveAnnouncementCicle) {
-                    try {
-                        byte[] buf = new byte[256];
-                        DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                        announcementMulticastSocket.receive(packet);
+                    byte[] buf = new byte[256];
+                    DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                    announcementMulticastSocket.receive(packet);
 
-                        byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
+                    byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
 
-                        GameMessage message = GameMessage.parseFrom(trimmedData);
-                        System.err.println("[UI] Get Multicast message: " + message.getTypeCase());
-                        if (message.getTypeCase() != GameMessage.TypeCase.ANNOUNCEMENT) continue;
+                    GameMessage message = GameMessage.parseFrom(trimmedData);
+                    System.err.println("[UI] Get Multicast message: " + message.getTypeCase());
+                    if (message.getTypeCase() != GameMessage.TypeCase.ANNOUNCEMENT) continue;
 
-                        updateServerList(message.getAnnouncement(), packet.getAddress(), packet.getPort());
-                    } catch (IOException e) {
-                        System.err.println("[GameUI] Announcement receive error!");
-                    }
+                    updateServerList(message.getAnnouncement(), packet.getAddress(), packet.getPort());
                 }
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                System.err.println("[GameUI] Announcement receive error!");
+                receiveAnnouncementCicle = false;
             }
         });
-        serverListListener.setDaemon(true);
         serverListListener.start();
     }
 
@@ -217,6 +219,8 @@ public class GameUI extends Application implements Observer {
             int height = Integer.parseInt(numbers[1]);
             adjustCellSize(width, height);
 
+            gameField = new GameField(width, height, 0, 0);
+
             client = new SnakeClient(serverInfo.serverIPProperty().get(), serverInfo.serverPortProperty().get(), this);
             client.start(playerName);
             running = true;
@@ -230,8 +234,8 @@ public class GameUI extends Application implements Observer {
         Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
 
         // Ширина и высота, доступные для игрового поля
-        double availableWidth = screenBounds.getWidth() - 300;
-        double availableHeight = screenBounds.getHeight() - 100;
+        double availableWidth = screenBounds.getWidth() - 900;
+        double availableHeight = screenBounds.getHeight() - 500;
 
         double cellWidth = availableWidth / fieldWidth;
         double cellHeight = availableHeight / fieldHeight;
@@ -241,8 +245,6 @@ public class GameUI extends Application implements Observer {
 
     private void gameExit() {
         running = false;
-        receiveAnnouncementCicle = false;
-        if (announcementMulticastSocket != null) announcementMulticastSocket.close();
 
         leaderboardTable.getItems().clear();
         curGameInfo.getItems().clear();
@@ -294,10 +296,14 @@ public class GameUI extends Application implements Observer {
             int foodCoefficientB = Integer.parseInt(coefficientBTextField.getText());
 
             // Создаём игру
-            gameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
-            adjustCellSize(fieldWidth, fieldHeight);
-            startServer(gameName, gameField);
-            startClient(playerName);
+            GameField serverGameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
+            startServer(gameName, serverGameField);
+            joinGame(playerName, new ServerInfo(gameName,
+                    0,
+                    widthTextField.getText() + "x" + heightTextField.getText(),
+                    0,
+                    serverIP,
+                    21212));
 
             // Закрываем форму создания игры
             createGameStage.close();
@@ -315,9 +321,9 @@ public class GameUI extends Application implements Observer {
         createGameStage.show();
     }
 
-    private void startServer(String gameName, GameField gameField) {
+    private void startServer(String gameName, GameField serverGameField) {
         try {
-            server = new SnakeServer(gameName, 21212, gameField, serverIP);
+            server = new SnakeServer(gameName, 21212, serverGameField, serverIP);
             server.start();
         } catch (IOException e) {
             System.err.println("Start server exception!");

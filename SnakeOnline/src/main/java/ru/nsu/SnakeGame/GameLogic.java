@@ -27,9 +27,7 @@ public class GameLogic {
             if (!snake.isAlive()) continue;
             // Проверяем столкновения с едой
             if (gameField.getFoods().contains(snake.getHead())) {
-                System.err.println("DEBUG =====" + snake.getBody().size());
                 snake.grow();
-                System.err.println("DEBUG2 =====" + snake.getBody().size());
 
                 List<GameState.Coord> temp = gameField.getFoods();
                 temp.remove(snake.getHead());
@@ -46,7 +44,6 @@ public class GameLogic {
                 }
             }
         }
-
         gameField.getSnakes().removeIf(snake -> !snake.isAlive());
     }
 
@@ -76,6 +73,10 @@ public class GameLogic {
         } else {
             placeFood();
         }
+    }
+
+    public void addSnake(Snake snake) {
+        gameField.addSnake(snake);
     }
 
     public GameField getGameField() {

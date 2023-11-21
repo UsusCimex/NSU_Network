@@ -6,7 +6,7 @@ import ru.nsu.SnakesProto.*;
 import java.util.*;
 
 public class Snake {
-    private final Deque<GameState.Coord> body; // Тело змеи, где body.peekFirst() - это голова
+    private Deque<GameState.Coord> body; // Тело змеи, где body.peekFirst() - это голова
     private Direction direction; // Текущее направление змеи
     private final Queue<Direction> nextDirection;
     private GameState.Snake.SnakeState state;
@@ -159,6 +159,9 @@ public class Snake {
     }
     public Deque<GameState.Coord> getBody() {
         return body;
+    }
+    public void setBody(Deque<GameState.Coord> newBody) {
+        this.body = newBody;
     }
     public GameState.Coord getHead() {
         return body.peekFirst();

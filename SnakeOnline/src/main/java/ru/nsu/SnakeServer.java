@@ -16,14 +16,13 @@ public class SnakeServer {
     public static final int CLIENT_MULTICAST_PORT = 8889;
 
     private long announcementDelayMS = 1000;
-    private long stateDelayMS = 1000;
 
     private InetAddress serverAddress;
 
     private long msgSeq = 0;
     private int stateOrder = 0;
     private String serverName;
-    private long delayMS = 1500;
+    private long delayMS = 700;
     private GameLogic snakeGame = null;
     private ConcurrentHashMap<Integer, GamePlayer> players = new ConcurrentHashMap<>();
     private ConcurrentHashMap<InetSocketAddress, Integer> addressToPlayerId = new ConcurrentHashMap<>();
@@ -32,6 +31,11 @@ public class SnakeServer {
     private int maxPlayerCount = 5;
     boolean running = false;
     private DatagramSocket socket;
+
+    Thread serverListener;
+    Thread announcementThread;
+    Thread stateThread;
+    Thread gameLoop;
 
     public SnakeServer(String name, int port, GameField gameField, String serverIP) throws IOException {
         this.serverAddress = InetAddress.getByName(serverIP);
@@ -42,7 +46,7 @@ public class SnakeServer {
 
     public void start() throws IOException {
         running = true;
-        Thread serverListener = new Thread(() -> {
+        serverListener = new Thread(() -> {
             while (running) {
                 try {
                     receiveMessage();
@@ -53,7 +57,7 @@ public class SnakeServer {
             }
         });
 
-        Thread announcementThread = new Thread(() -> {
+        announcementThread = new Thread(() -> {
             while (running) {
                 try {
                     sendAnnouncement(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.GAME_MULTICAST_PORT);
@@ -65,45 +69,33 @@ public class SnakeServer {
             }
         });
 
-        Thread stateThread = new Thread(() -> {
+        gameLoop = new Thread(() -> {
             while (running) {
                 try {
-                    sendState(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.CLIENT_MULTICAST_PORT);
-                    Thread.sleep(stateDelayMS);
-                } catch (InterruptedException | IOException e) {
-                    System.err.println("[Server] State send error!");
-                    running = false;
-                }
-            }
-        });
-
-        Thread gameLoop = new Thread(() -> {
-            while (running) {
-                try {
+                    if (snakeGame.getGameField().getSnakes().isEmpty()) continue;
                     Thread.sleep(delayMS);
                     snakeGame.update();
-                } catch (InterruptedException e) {
+                    sendState(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.CLIENT_MULTICAST_PORT);
+                } catch (IOException | InterruptedException e) {
                     System.err.println("[Server] Game loop destroyed...");
                     running = false;
-                    e.printStackTrace();
                 }
             }
         });
-
-        serverListener.setDaemon(true);
-        announcementThread.setDaemon(true);
-        stateThread.setDaemon(true);
-        gameLoop.setDaemon(true);
 
         serverListener.start();
         announcementThread.start();
-        stateThread.start();
         gameLoop.start();
     }
 
     public void stop() {
         running = false;
         if (socket != null) socket.close();
+
+        if(serverListener != null) serverListener.interrupt();
+        if(announcementThread != null) announcementThread.interrupt();
+        if(stateThread != null) stateThread.interrupt();
+        if(gameLoop != null) gameLoop.interrupt();
     }
 
     public void receiveMessage() throws IOException {
@@ -185,7 +177,7 @@ public class SnakeServer {
             ArrayList<GameState.Coord> initialPosition = snakeGame.getGameField().findValidSnakePosition();
 
             Snake newSnake = new Snake(initialPosition, playerId);
-            snakeGame.getGameField().addSnake(newSnake);
+            snakeGame.addSnake(newSnake);
 
             sendAcknowledgement(playerId, address, port);
             sendState(address, port);
