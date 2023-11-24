@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import ru.nsu.SnakeGame.GameField;
 import ru.nsu.SnakeGame.GameLogic;
@@ -19,7 +20,7 @@ public class SnakeServer {
 
     private InetAddress serverAddress;
 
-    private long msgSeq = 0;
+    private AtomicLong msgSeq = new AtomicLong(0);
     private int stateOrder = 0;
     private String serverName;
     private long delayMS = 700;
@@ -29,7 +30,6 @@ public class SnakeServer {
     private int currentMaxId = 0;  // Простой способ генерировать ID для новых игроков
     private int playerCount = 0;
     private int maxPlayerCount = 5;
-    boolean running = false;
     private DatagramSocket socket;
 
     Thread serverListener;
@@ -45,32 +45,31 @@ public class SnakeServer {
     }
 
     public void start() throws IOException {
-        running = true;
         serverListener = new Thread(() -> {
-            while (running) {
+            while (!serverListener.isInterrupted()) {
                 try {
                     receiveMessage();
                 } catch (IOException e) {
                     System.err.println("[Server] Receive message error!");
-                    running = false;
+                    break;
                 }
             }
         });
 
         announcementThread = new Thread(() -> {
-            while (running) {
+            while (!announcementThread.isInterrupted()) {
                 try {
                     sendAnnouncement(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.GAME_MULTICAST_PORT);
                     Thread.sleep(announcementDelayMS);
                 } catch (InterruptedException | IOException e) {
                     System.err.println("[Server] Announcement send error!");
-                    running = false;
+                    break;
                 }
             }
         });
 
         gameLoop = new Thread(() -> {
-            while (running) {
+            while (!gameLoop.isInterrupted()) {
                 try {
                     Thread.sleep(delayMS);
                     snakeGame.update();
@@ -78,7 +77,7 @@ public class SnakeServer {
                     sendState(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.CLIENT_MULTICAST_PORT);
                 } catch (IOException | InterruptedException e) {
                     System.err.println("[Server] Game loop destroyed...");
-                    running = false;
+                    break;
                 }
             }
         });
@@ -102,7 +101,6 @@ public class SnakeServer {
         }
     }
     public void stop() {
-        running = false;
         if (socket != null) socket.close();
 
         if(serverListener != null) serverListener.interrupt();
@@ -147,7 +145,7 @@ public class SnakeServer {
     private GameMessage createAnnouncementMessage() {
         GameField field = snakeGame.getGameField();
         return GameMessage.newBuilder()
-                .setMsgSeq(++msgSeq)
+                .setMsgSeq(msgSeq.incrementAndGet())
                 .setAnnouncement(GameMessage.AnnouncementMsg.newBuilder()
                         .addGames(GameAnnouncement.newBuilder()
                                 .setPlayers(GamePlayers.newBuilder()
@@ -221,7 +219,7 @@ public class SnakeServer {
         gameStateBuilder.setPlayers(GamePlayers.newBuilder().addAllPlayers(players.values()).build());
 
         return GameMessage.newBuilder()
-                .setMsgSeq(++msgSeq)
+                .setMsgSeq(msgSeq.incrementAndGet())
                 .setState(GameMessage.StateMsg.newBuilder().setState(gameStateBuilder.build()).build())
                 .build();
     }
@@ -275,7 +273,7 @@ public class SnakeServer {
 
     private void sendError(String errorMessage, InetAddress address, int port) throws IOException {
         GameMessage error = GameMessage.newBuilder()
-                .setMsgSeq(++msgSeq)
+                .setMsgSeq(msgSeq.incrementAndGet())
                 .setError(GameMessage.ErrorMsg.newBuilder().setErrorMessage(errorMessage).build())
                 .build();
 
@@ -283,7 +281,7 @@ public class SnakeServer {
     }
     private void sendAcknowledgement(int playerId, InetAddress address, int port) throws IOException {
         GameMessage ack = GameMessage.newBuilder()
-                .setMsgSeq(++msgSeq)
+                .setMsgSeq(msgSeq.incrementAndGet())
                 .setAck(GameMessage.AckMsg.newBuilder().build())
                 .build();
 

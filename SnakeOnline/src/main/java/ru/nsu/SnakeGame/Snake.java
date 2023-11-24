@@ -100,7 +100,7 @@ public class Snake {
         return snakeBuilder.build();
     }
 
-    public void move(GameField gameField) {
+    public synchronized void move(GameField gameField) {
         GameState.Coord head = body.peekFirst();
         assert head != null;
         int dx = 0,dy = 0;
@@ -146,7 +146,7 @@ public class Snake {
         body.addLast(tail);
     }
 
-    public void setNextDirection(Direction newDirection) {
+    public synchronized void setNextDirection(Direction newDirection) {
         if (!nextDirection.isEmpty()) {
             // Предотвращение добавления направления, если оно противоположно текущему
             Direction lastDirection = nextDirection.peek();

@@ -1,7 +1,6 @@
 package ru.nsu.patterns;
-
-import ru.nsu.SnakeGame.GameField;
+import java.net.InetAddress;
 
 public interface Observer {
-    void update (Object o);
+    void update (Object message, InetAddress address, int port);
 }

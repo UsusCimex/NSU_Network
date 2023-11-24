@@ -18,10 +18,12 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
+import ru.nsu.Controller;
 import ru.nsu.SnakeClient;
 import ru.nsu.SnakeGame.GameField;
 import ru.nsu.SnakeGame.Snake;
 import ru.nsu.SnakeServer;
+import ru.nsu.SnakesProto;
 import ru.nsu.SnakesProto.*;
 import ru.nsu.patterns.Observer;
 
@@ -33,32 +35,23 @@ import java.util.*;
 
 public class GameUI extends Application implements Observer {
     private static double CELL_SIZE;
-    private final String serverIP = "localhost";
     private final long threshold = 3000;
 
     private BorderPane root;
     private GridPane gameGrid;
 
     private TableView<PlayerInfo> leaderboardTable;
-
     private TableView<ServerInfo> curGameInfo;
-
     private TableView<ServerInfo> serverList = new TableView<>();
     private Map<String, Timer> serverTimers = new HashMap<>();
 
     private GameField gameField = null;
-    private boolean running = false;
-    private boolean receiveAnnouncementCicle = false;
 
-    MulticastSocket announcementMulticastSocket;
-
-    private SnakeServer server = null;
-    private SnakeClient client = null;
+    private volatile boolean gameRunning = false;
 
     private Button createGameButton;
     private Button exitGameButton;
-
-    Thread serverListListener;
+    private Controller controller = new Controller(this);
 
     @Override
     public void start(Stage stage) {
@@ -82,9 +75,7 @@ public class GameUI extends Application implements Observer {
 
         stage.setOnCloseRequest(event -> {
             gameExit();
-            receiveAnnouncementCicle = false;
-            if (announcementMulticastSocket != null) announcementMulticastSocket.close();
-            if (serverListListener != null) serverListListener.interrupt();
+            controller.close();
 
             for (Timer timer : serverTimers.values()) {
                 timer.cancel();
@@ -92,32 +83,7 @@ public class GameUI extends Application implements Observer {
             Platform.exit();
         });
 
-        // Создадим поток, который будет получать ANNOUNCEMENT сообщения
-        receiveAnnouncementCicle = true;
-        serverListListener = new Thread(() -> {
-            try {
-                announcementMulticastSocket = new MulticastSocket(SnakeServer.GAME_MULTICAST_PORT);
-                announcementMulticastSocket.joinGroup(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS));
-
-                while (receiveAnnouncementCicle) {
-                    byte[] buf = new byte[256];
-                    DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                    announcementMulticastSocket.receive(packet);
-
-                    byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
-
-                    GameMessage message = GameMessage.parseFrom(trimmedData);
-                    System.err.println("[UI] Get Multicast message: " + message.getTypeCase());
-                    if (message.getTypeCase() != GameMessage.TypeCase.ANNOUNCEMENT) continue;
-
-                    updateServerList(message.getAnnouncement(), packet.getAddress(), packet.getPort());
-                }
-            } catch (IOException e) {
-                System.err.println("[GameUI] Announcement receive error!");
-                receiveAnnouncementCicle = false;
-            }
-        });
-        serverListListener.start();
+        controller.start();
     }
 
     private void clearGameGrid() {
@@ -191,7 +157,7 @@ public class GameUI extends Application implements Observer {
             row.setOnMouseClicked(event -> {
                 if (!row.isEmpty() && event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
                     ServerInfo clickedRow = row.getItem();
-                    if (!running) { // Проверка, что пользователь не находится в игре
+                    if (!gameRunning) { // Проверка, что пользователь не находится в игре
                         showJoinGameDialog(clickedRow);
                     }
                 }
@@ -215,10 +181,6 @@ public class GameUI extends Application implements Observer {
 
     private void joinGame(String playerName, ServerInfo serverInfo) {
         try {
-            if (client != null && running) {
-                client.stop();
-            }
-
             String[] numbers = serverInfo.areaSizeProperty().get().split("[^0-9]+");
             int width = Integer.parseInt(numbers[0]);
             int height = Integer.parseInt(numbers[1]);
@@ -226,9 +188,8 @@ public class GameUI extends Application implements Observer {
 
             gameField = new GameField(width, height, 0, 0);
 
-            client = new SnakeClient(serverInfo.serverIPProperty().get(), serverInfo.serverPortProperty().get(), this);
-            client.start(playerName);
-            running = true;
+            controller.startClient(playerName, serverInfo);
+            gameRunning = true;
             updateButtonsState(); // Обновление состояния кнопок
             updateCurGameInfo(serverInfo);
         } catch (IOException e) {
@@ -250,20 +211,14 @@ public class GameUI extends Application implements Observer {
     }
 
     private void gameExit() {
-        running = false;
+        gameRunning = false;
 
         leaderboardTable.getItems().clear();
         curGameInfo.getItems().clear();
         if (gameField != null) clearGameGrid();
 
-        if (server != null) {
-            server.stop();
-            server = null;
-        }
-        if (client != null) {
-            client.stop();
-            client = null;
-        }
+        controller.stopServer();
+        controller.stopClient();
 
         updateButtonsState();
     }
@@ -310,7 +265,7 @@ public class GameUI extends Application implements Observer {
                     0,
                     widthTextField.getText() + "x" + heightTextField.getText(),
                     0,
-                    serverIP,
+                    controller.getServerIP(),
                     21212));
 
             // Закрываем форму создания игры
@@ -331,8 +286,7 @@ public class GameUI extends Application implements Observer {
 
     private void startServer(String gameName, GameField serverGameField) {
         try {
-            server = new SnakeServer(gameName, 21212, serverGameField, serverIP);
-            server.start();
+            controller.startServer(gameName, serverGameField);
         } catch (IOException e) {
             System.err.println("Start server exception!");
             throw new RuntimeException(e);
@@ -340,14 +294,9 @@ public class GameUI extends Application implements Observer {
     }
 
     private void handleKeyPress(KeyCode code) {
-        if (client != null) {
+        if (gameRunning) {
             try {
-                switch (code) {
-                    case A, LEFT  -> client.sendSteer(Direction.LEFT);
-                    case S, DOWN  -> client.sendSteer(Direction.DOWN);
-                    case D, RIGHT -> client.sendSteer(Direction.RIGHT);
-                    case W, UP    -> client.sendSteer(Direction.UP);
-                }
+                controller.sendSteerMsg(code);
             } catch (IOException ex) {
                 System.err.println("Steer send error!");
                 ex.printStackTrace();
@@ -396,9 +345,9 @@ public class GameUI extends Application implements Observer {
     }
 
     @Override
-    public void update(Object o) {
-        if (o instanceof GameMessage.StateMsg) {
-            GameMessage.StateMsg stateMsg = (GameMessage.StateMsg) o;
+    public void update(Object message, InetAddress address, int port) {
+        if (message instanceof GameMessage.StateMsg) {
+            GameMessage.StateMsg stateMsg = (GameMessage.StateMsg) message;
             gameField.setFoods(stateMsg.getState().getFoodsList());
             for (GameState.Snake snake : stateMsg.getState().getSnakesList()) {
                 gameField.updateSnake(Snake.parseSnake(snake));
@@ -407,14 +356,15 @@ public class GameUI extends Application implements Observer {
 
             GamePlayers gamePlayers = stateMsg.getState().getPlayers();
             updateLeaderboardTable(gamePlayers);
+        } else if (message instanceof GameMessage.AnnouncementMsg) {
+            GameMessage.AnnouncementMsg announcementMsg = (GameMessage.AnnouncementMsg) message;
+            updateServerList(announcementMsg, address, port);
         }
     }
     private void updateLeaderboardTable(GamePlayers gamePlayers) {
         leaderboardTable.getItems().clear();
 
-        // Iterate through the players in the gamePlayers message
         for (GamePlayer player : gamePlayers.getPlayersList()) {
-            // Update the PlayerInfo object with the player's information
             PlayerInfo playerInfo = new PlayerInfo(
                     getPlace(gamePlayers, player),
                     player.getName(),
@@ -504,7 +454,7 @@ public class GameUI extends Application implements Observer {
     }
 
     private void updateButtonsState() {
-        createGameButton.setDisable(running);
-        exitGameButton.setDisable(!running);
+        createGameButton.setDisable(gameRunning);
+        exitGameButton.setDisable(!gameRunning);
     }
 }

@@ -6,14 +6,14 @@ import ru.nsu.patterns.Observer;
 import java.io.IOException;
 import java.net.*;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class SnakeClient {
     private Observer observer;
-    private long msgSeq = 0;
+    private AtomicLong msgSeq = new AtomicLong(0);
     private DatagramSocket socket;
     private InetAddress serverAddress;
     private int serverPort;
-    private boolean running = false;
 
     private MulticastSocket multicastSocket;
     private InetAddress multicastGroup;
@@ -34,24 +34,23 @@ public class SnakeClient {
     public void start(String playerName) throws IOException {
         sendJoinRequest(playerName);
 
-        running = true;
         clientThread = new Thread(() -> {
-            while (running) {
+            while (!clientThread.isInterrupted()) {
                 try {
                     receiveMessage();
                 } catch (IOException ex) {
                     System.err.println("[Client] Receive message error!");
-                    running = false;
+                    break;
                 }
             }
         });
         multicastClientThread = new Thread(() -> {
-            while (running) {
+            while (!multicastClientThread.isInterrupted()) {
                 try {
                     receiveMulticastMessage();
                 } catch (IOException ex) {
                     System.err.println("[Client] Receive multicast message error!");
-                    running = false;
+                    break;
                 }
             }
         });
@@ -61,7 +60,6 @@ public class SnakeClient {
     }
 
     public void stop() {
-        running = false;
         if (socket != null) socket.close();
         if (multicastSocket != null) multicastSocket.close();
 
@@ -72,7 +70,7 @@ public class SnakeClient {
 
     public void sendJoinRequest(String playerName) throws IOException {
         GameMessage joinMessage = GameMessage.newBuilder()
-                .setMsgSeq(++msgSeq)
+                .setMsgSeq(msgSeq.incrementAndGet())
                 .setJoin(GameMessage.JoinMsg.newBuilder()
                         .setPlayerName(playerName)
                         .setGameName("Example Game") // Это значение должно соответствовать имени игры на сервере
@@ -85,7 +83,7 @@ public class SnakeClient {
 
     public void sendSteer(Direction direction) throws IOException {
         GameMessage steerMessage = GameMessage.newBuilder()
-                .setMsgSeq(++msgSeq)
+                .setMsgSeq(msgSeq.incrementAndGet())
                 .setSteer(GameMessage.SteerMsg.newBuilder()
                         .setDirection(direction)
                         .build())
@@ -146,7 +144,7 @@ public class SnakeClient {
 
     private void handleState(GameMessage message, InetAddress address, int port) {
         GameMessage.StateMsg stateMsg = message.getState();
-        observer.update(stateMsg);
+        observer.update(stateMsg, address, port);
     }
 
     private void handleAck(GameMessage message, InetAddress address, int port) {
@@ -162,7 +160,7 @@ public class SnakeClient {
 
     private void sendError(String errorMessage, InetAddress address, int port) throws IOException {
         GameMessage error = GameMessage.newBuilder()
-                .setMsgSeq(++msgSeq)
+                .setMsgSeq(msgSeq.incrementAndGet())
                 .setError(GameMessage.ErrorMsg.newBuilder().setErrorMessage(errorMessage).build())
                 .build();
 
@@ -170,7 +168,7 @@ public class SnakeClient {
     }
     private void sendAcknowledgement(int playerId, InetAddress address, int port) throws IOException {
         GameMessage ack = GameMessage.newBuilder()
-                .setMsgSeq(++msgSeq)
+                .setMsgSeq(msgSeq.incrementAndGet())
                 .setAck(GameMessage.AckMsg.newBuilder().build())
                 .build();
 
