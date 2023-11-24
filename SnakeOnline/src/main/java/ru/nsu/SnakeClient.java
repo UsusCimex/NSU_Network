@@ -9,24 +9,17 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SnakeClient {
-    private Observer observer;
-    private AtomicLong msgSeq = new AtomicLong(0);
-    private DatagramSocket socket;
-    private InetAddress serverAddress;
-    private int serverPort;
-
-    private MulticastSocket multicastSocket;
-    private InetAddress multicastGroup;
+    private final Observer observer;
+    private final AtomicLong msgSeq = new AtomicLong(0);
+    private final DatagramSocket socket;
+    private final InetAddress serverAddress;
+    private final int serverPort;
 
     Thread clientThread;
-    Thread multicastClientThread;
 
     public SnakeClient(String serverIP, int serverPort, Observer observer) throws IOException {
         this.serverAddress = InetAddress.getByName(serverIP);
         this.socket = new DatagramSocket();
-        this.multicastSocket = new MulticastSocket(SnakeServer.CLIENT_MULTICAST_PORT);
-        this.multicastGroup = InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS);
-        this.multicastSocket.joinGroup(multicastGroup);
         this.serverPort = serverPort;
         this.observer = observer;
     }
@@ -44,27 +37,14 @@ public class SnakeClient {
                 }
             }
         });
-        multicastClientThread = new Thread(() -> {
-            while (!multicastClientThread.isInterrupted()) {
-                try {
-                    receiveMulticastMessage();
-                } catch (IOException ex) {
-                    System.err.println("[Client] Receive multicast message error!");
-                    break;
-                }
-            }
-        });
 
         clientThread.start();
-        multicastClientThread.start();
     }
 
     public void stop() {
         if (socket != null) socket.close();
-        if (multicastSocket != null) multicastSocket.close();
 
         if (clientThread != null) clientThread.interrupt();
-        if (multicastClientThread != null) multicastClientThread.interrupt();
     }
 
 
@@ -73,7 +53,7 @@ public class SnakeClient {
                 .setMsgSeq(msgSeq.incrementAndGet())
                 .setJoin(GameMessage.JoinMsg.newBuilder()
                         .setPlayerName(playerName)
-                        .setGameName("Example Game") // Это значение должно соответствовать имени игры на сервере
+                        .setGameName("GameName")
                         .setRequestedRole(NodeRole.NORMAL)
                         .build())
                 .build();
@@ -96,34 +76,34 @@ public class SnakeClient {
         byte[] buffer = new byte[256];
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         socket.receive(packet);
-        handlePacket(packet);
-    }
 
-    private void receiveMulticastMessage() throws IOException {
-        byte[] buffer = new byte[256];
-        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-        multicastSocket.receive(packet);
-        handlePacket(packet);
-    }
-
-    private void handlePacket(DatagramPacket packet) throws IOException {
         byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
 
+        InetAddress address = packet.getAddress();
+        int port = packet.getPort();
+
         GameMessage message = GameMessage.parseFrom(trimmedData);
-        System.err.println("[Client] listened " + message.getTypeCase());
+        if (message.getTypeCase() != GameMessage.TypeCase.ACK) {
+            System.err.println("[Client] listened " + message.getTypeCase() + " from " + address + ":" + port);
+        }
         switch (message.getTypeCase()) {
-            case PING  -> handlePing(message, serverAddress, serverPort);
-            case STEER -> handleSteer(message, serverAddress, serverPort);
-            case JOIN  -> handleJoin(message, serverAddress, serverPort);
-            case ANNOUNCEMENT -> handleAnnouncement(message, serverAddress, serverPort);
-            case STATE -> handleState(message, serverAddress, serverPort);
-            case ACK   -> handleAck(message, serverAddress, serverPort);
-            case ERROR -> handleError(message, serverAddress, serverPort);
-            case ROLE_CHANGE -> handleRoleChange(message, serverAddress, serverPort);
+            case PING  -> handlePing(message, address, port);
+            case STEER -> handleSteer(message, address, port);
+            case JOIN  -> handleJoin(message, address, port);
+            case ANNOUNCEMENT -> handleAnnouncement(message, address, port);
+            case STATE -> handleState(message, address, port);
+            case ACK   -> handleAck(message, address, port);
+            case ERROR -> handleError(message, address, port);
+            case ROLE_CHANGE -> handleRoleChange(message, address, port);
             default    -> {
-                System.err.println("Unknown message type (" + message.getTypeCase() + ") from " + serverAddress.toString() + serverPort);
-                sendError("Unknown message type", serverAddress, serverPort);
+                System.err.println("Unknown message type (" + message.getTypeCase() + ") from " + serverAddress.toString() + ":" + serverPort);
+                sendError("Unknown message type", address, port);
+                return;
             }
+        }
+
+        if (message.getTypeCase() != GameMessage.TypeCase.ANNOUNCEMENT && message.getTypeCase() != GameMessage.TypeCase.ACK) {
+            sendAcknowledgement(message.getMsgSeq(), address, port);
         }
     }
 
@@ -166,9 +146,9 @@ public class SnakeClient {
 
         sendGameMessage(error, address, port);
     }
-    private void sendAcknowledgement(int playerId, InetAddress address, int port) throws IOException {
+    private void sendAcknowledgement(long msg_seq, InetAddress address, int port) throws IOException {
         GameMessage ack = GameMessage.newBuilder()
-                .setMsgSeq(msgSeq.incrementAndGet())
+                .setMsgSeq(msg_seq)
                 .setAck(GameMessage.AckMsg.newBuilder().build())
                 .build();
 
@@ -177,7 +157,9 @@ public class SnakeClient {
     private void sendGameMessage(GameMessage gameMessage, InetAddress address, int port) throws IOException {
         byte[] buffer = gameMessage.toByteArray();
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, port);
-        System.err.println("[Client] Send message " + gameMessage.getTypeCase() + " to " + address + ":" + port);
+        if (gameMessage.getTypeCase() != GameMessage.TypeCase.ACK) {
+            System.err.println("[Client] Send message " + gameMessage.getTypeCase() + " to " + address + ":" + port);
+        }
         socket.send(packet);
     }
 }

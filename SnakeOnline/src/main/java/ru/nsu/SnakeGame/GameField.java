@@ -76,16 +76,17 @@ public class GameField {
         for (Snake snk : snakes) {
             if (snk.getPlayerID() == snake.getPlayerID()) {
                 snk.setBody(snake.getBody());
+                snk.setUpdated();
                 return;
             }
         }
-        System.err.println("Add new snake(" + snake.getPlayerID() + ")");
         addSnake(snake);
+        snake.setUpdated();
     }
-    public void addSnake(Snake snake) {
+    public synchronized void addSnake(Snake snake) {
         snakes.add(snake);
     }
-    public void removeSnake(Snake snake) {
+    public synchronized void removeSnake(Snake snake) {
         snakes.remove(snake);
     }
     public int amountOfFoodNeeded(int playerCount) {
@@ -100,7 +101,7 @@ public class GameField {
     public void setFoods(List<GameState.Coord> foods) {
         this.foods = foods;
     }
-    public void setSnakes(List<Snake> snakes) {
+    public synchronized void setSnakes(List<Snake> snakes) {
         this.snakes = snakes;
     }
 }

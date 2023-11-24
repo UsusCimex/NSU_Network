@@ -10,7 +10,7 @@ public class Snake {
     private Direction direction; // Текущее направление змеи
     private final Queue<Direction> nextDirection;
     private GameState.Snake.SnakeState state;
-    private boolean alive;
+    private boolean updated; //Need to UI drow
     private final Color color;
     private final int playerID;
     private int score;
@@ -22,7 +22,6 @@ public class Snake {
         this.direction = Direction.RIGHT; // Начальное направление
         this.nextDirection = new LinkedList<>();
         this.state = GameState.Snake.SnakeState.ALIVE;
-        alive = true;
         score = 0;
         Random random = new Random();
         this.color = Color.rgb(random.nextInt(256), random.nextInt(256), random.nextInt(256));
@@ -100,7 +99,8 @@ public class Snake {
         return snakeBuilder.build();
     }
 
-    public synchronized void move(GameField gameField) {
+    // return successfully move
+    public synchronized boolean move(GameField gameField) {
         GameState.Coord head = body.peekFirst();
         assert head != null;
         int dx = 0,dy = 0;
@@ -110,10 +110,22 @@ public class Snake {
             if (dir == direction) continue;
             boolean dirChanged = false;
             switch (dir) {
-                case LEFT : { if (direction != Direction.RIGHT) direction = Direction.LEFT; dirChanged = true; break; }
-                case RIGHT: { if (direction != Direction.LEFT)  direction = Direction.RIGHT; dirChanged = true; break; }
-                case UP   : { if (direction != Direction.DOWN)  direction = Direction.UP; dirChanged = true; break; }
-                case DOWN : { if (direction != Direction.UP)    direction = Direction.DOWN; dirChanged = true; break; }
+                case LEFT -> {
+                    if (direction != Direction.RIGHT) direction = Direction.LEFT;
+                    dirChanged = true;
+                }
+                case RIGHT -> {
+                    if (direction != Direction.LEFT) direction = Direction.RIGHT;
+                    dirChanged = true;
+                }
+                case UP -> {
+                    if (direction != Direction.DOWN) direction = Direction.UP;
+                    dirChanged = true;
+                }
+                case DOWN -> {
+                    if (direction != Direction.UP) direction = Direction.DOWN;
+                    dirChanged = true;
+                }
             }
             if (dirChanged) break;
         }
@@ -125,20 +137,24 @@ public class Snake {
             case RIGHT -> dx =  1;
         }
         GameState.Coord newHead = GameState.Coord.newBuilder()
-                .setX(head.getX() + dx)
-                .setY(head.getY() + dy)
+                .setX((gameField.getWidth() + head.getX() + dx) % gameField.getWidth())
+                .setY((gameField.getWidth() + head.getY() + dy) % gameField.getHeight())
                 .build();
 
         // Проверяем, не вышла ли змея за границы поля или не врезалась ли в себя
-        if (newHead.getX() < 0 || newHead.getY() < 0 || newHead.getX() >= gameField.getWidth()
-                || newHead.getY() >= gameField.getHeight() || body.contains(newHead)) {
-            alive = false;
-            return;
+//        if (newHead.getX() < 0 || newHead.getY() < 0 || newHead.getX() >= gameField.getWidth()
+//                || newHead.getY() >= gameField.getHeight() || body.contains(newHead)) {
+//            return false;
+//        }
+
+        if (body.contains(newHead)) {
+            return false;
         }
 
         // Двигаем змею
         body.addFirst(newHead);
         body.removeLast(); // Удаляем последний элемент из очереди, чтобы змея двигалась
+        return true;
     }
 
     public void grow() {
@@ -181,12 +197,15 @@ public class Snake {
     public GameState.Snake.SnakeState getState() {
         return state;
     }
-    public boolean isAlive() {
-        return alive;
+    public boolean isUpdated() {
+        return updated;
     }
 
-    public void setAlive(boolean status) {
-        alive = status;
+    public void setUpdated() {
+        updated = true;
+    }
+    public void clearUpdated() {
+        updated = false;
     }
     public int getPlayerID() {
         return playerID;

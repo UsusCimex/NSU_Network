@@ -6,12 +6,12 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 
 public class ServerInfo {
-    private StringProperty serverName;
-    private IntegerProperty online;
-    private StringProperty areaSize;
-    private IntegerProperty food;
-    private StringProperty serverIP;
-    private IntegerProperty serverPort;
+    private final StringProperty serverName;
+    private final IntegerProperty online;
+    private final StringProperty areaSize;
+    private final IntegerProperty food;
+    private final StringProperty serverIP;
+    private final IntegerProperty serverPort;
 
     public ServerInfo(String serverName, int online, String areaSize, int food, String serverIP, int serverPort) {
         this.serverName = new SimpleStringProperty(serverName);

@@ -6,9 +6,9 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 
 public class PlayerInfo {
-    private StringProperty place;
-    private StringProperty playerName;
-    private IntegerProperty score;
+    private final StringProperty place;
+    private final StringProperty playerName;
+    private final IntegerProperty score;
 
     public PlayerInfo(String place, String playerName, int score) {
         this.place = new SimpleStringProperty(place);

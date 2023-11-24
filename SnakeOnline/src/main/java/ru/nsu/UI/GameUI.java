@@ -19,18 +19,13 @@ import javafx.scene.shape.Rectangle;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import ru.nsu.Controller;
-import ru.nsu.SnakeClient;
 import ru.nsu.SnakeGame.GameField;
 import ru.nsu.SnakeGame.Snake;
-import ru.nsu.SnakeServer;
-import ru.nsu.SnakesProto;
 import ru.nsu.SnakesProto.*;
 import ru.nsu.patterns.Observer;
 
 import java.io.IOException;
-import java.net.DatagramPacket;
 import java.net.InetAddress;
-import java.net.MulticastSocket;
 import java.util.*;
 
 public class GameUI extends Application implements Observer {
@@ -316,7 +311,7 @@ public class GameUI extends Application implements Observer {
                 Color curColor;
                 if (counter == 0) {
                     curColor = snake.getColor().darker();
-                } else if (counter % 6 < 3) {
+                } else if ((counter + 1) % 4 < 2) {
                     curColor = snake.getColor();
                 } else {
                     curColor = snake.getColor().brighter();
@@ -349,8 +344,16 @@ public class GameUI extends Application implements Observer {
         if (message instanceof GameMessage.StateMsg) {
             GameMessage.StateMsg stateMsg = (GameMessage.StateMsg) message;
             gameField.setFoods(stateMsg.getState().getFoodsList());
+            for (Snake snake : gameField.getSnakes()) {
+                snake.clearUpdated();
+            }
             for (GameState.Snake snake : stateMsg.getState().getSnakesList()) {
                 gameField.updateSnake(Snake.parseSnake(snake));
+            }
+            for (Snake snake : gameField.getSnakes()) {
+                if (!snake.isUpdated()) {
+                    gameField.removeSnake(snake);
+                }
             }
             render();
 

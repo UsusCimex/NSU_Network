@@ -2,7 +2,6 @@ package ru.nsu;
 
 import javafx.scene.input.KeyCode;
 import ru.nsu.SnakeGame.GameField;
-import ru.nsu.UI.GameUI;
 import ru.nsu.UI.ServerInfo;
 import ru.nsu.patterns.Observer;
 
@@ -49,17 +48,17 @@ public class Controller {
                         byte[] trimmedData = Arrays.copyOfRange(packet.getData(), packet.getOffset(), packet.getLength());
 
                         SnakesProto.GameMessage message = SnakesProto.GameMessage.parseFrom(trimmedData);
-                        System.err.println("[UI] Get Multicast message: " + message.getTypeCase());
+                        System.err.println("[Controller] Get Multicast message: " + message.getTypeCase() + " from " + packet.getAddress() + ":" + packet.getPort());
                         if (message.getTypeCase() != SnakesProto.GameMessage.TypeCase.ANNOUNCEMENT) continue;
 
                         UI.update(message.getAnnouncement(), packet.getAddress(), packet.getPort());
                     } catch (IOException ex) {
-                        System.err.println("[GameUI] Announcement receive error!");
+                        System.err.println("[Controller] Announcement receive error!");
                         break;
                     }
                 }
             } catch (IOException e) {
-                System.err.println("[GameUI] MulticastServer create error!");
+                System.err.println("[Controller] MulticastServer create error!");
             }
         });
         serverListListener.start();

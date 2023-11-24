@@ -22,11 +22,10 @@ public class GameLogic {
             }
         }
 
-        ArrayList<Snake> rmList = new ArrayList<>();
         for (Snake snake : gameField.getSnakes()) {
-            snake.move(gameField);
-            if (!snake.isAlive()) {
-                rmList.add(snake);
+
+            if (!snake.move(gameField)) {
+                gameField.removeSnake(snake);
                 continue;
             }
 
@@ -45,16 +44,11 @@ public class GameLogic {
             for (Snake anotherSnake : gameField.getSnakes()) {
                 if (anotherSnake.equals(snake)) continue;
                 if (anotherSnake.getBody().contains(snake.getHead())) {
-                    anotherSnake.addScore(2);
-                    snake.setAlive(false);
-                    rmList.add(snake);
+                    anotherSnake.addScore(1);
+                    gameField.removeSnake(snake);
                     break;
                 }
             }
-        }
-
-        for (Snake snake : rmList) {
-            gameField.removeSnake(snake);
         }
     }
 
