@@ -3,6 +3,7 @@ import java.net.*;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -21,9 +22,10 @@ public class SnakeServer {
 
     private final ConcurrentHashMap<Integer, Long> lastAckTime = new ConcurrentHashMap<>(); // Для отслеживания времени последнего Ack
     private final ConcurrentHashMap<Integer, Long> lastMsgSeqReceived = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, SentMessageInfo> sentMessages = new ConcurrentHashMap<>();
     private static final long ACK_TIMEOUT = 5000; // Таймаут в миллисекундах
 
-    private final long announcementDelayMS = 2000;
+    private final long announcementDelayMS = 1000;
 
     private int senderId = 1;
 
@@ -32,7 +34,6 @@ public class SnakeServer {
     private final AtomicLong msgSeq = new AtomicLong(0);
     private int stateOrder = 0;
     private final String serverName;
-    private final long delayMS = 1500;
     private GameLogic snakeGame = null;
     private final ConcurrentHashMap<Integer, GamePlayer> players = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<InetSocketAddress, Integer> addressToPlayerId = new ConcurrentHashMap<>();
@@ -42,10 +43,10 @@ public class SnakeServer {
     private final DatagramSocket socket;
     private final MulticastSocket multicastSocket;
 
-    Thread serverListener;
-    Thread announcementThread;
-    Thread playerChecker;
-    Thread gameLoop;
+    private Thread serverListener;
+    private Thread announcementThread;
+    private Thread playerChecker;
+    private Thread gameLoop;
 
     public SnakeServer(String name, int port, GameField gameField, String serverIP, MulticastSocket multicastSocket) throws IOException {
         this.serverAddress = InetAddress.getByName(serverIP);
@@ -90,7 +91,7 @@ public class SnakeServer {
         gameLoop = new Thread(() -> {
             while (!gameLoop.isInterrupted()) {
                 try {
-                    Thread.sleep(delayMS);
+                    Thread.sleep(snakeGame.getGameField().getDelayMS());
                     snakeGame.update();
                     updatePlayersScore();
                     sendStateForAll();
@@ -148,12 +149,27 @@ public class SnakeServer {
                 removePlayer(playerId);
             }
         });
+
+        // Повторная отправка сообщений
+        sentMessages.entrySet().removeIf(entry -> {
+            SentMessageInfo info = entry.getValue();
+            boolean shouldResend = currentTime - info.getTimestamp() > ACK_TIMEOUT;
+            if (shouldResend) {
+                try {
+                    sendGameMessage(info.getMessage(), info.getAddress(), info.getPort());
+                } catch (IOException e) {
+                    System.err.println("Error resending message: " + e.getMessage());
+                }
+            }
+            return !players.containsKey(info.getMessage().getReceiverId()) || shouldResend;
+        });
     }
 
     private void removePlayer(int playerId) {
         players.remove(playerId);
         addressToPlayerId.values().removeIf(id -> id == playerId);
-        // Дополнительная логика по удалению игрока, если необходимо
+        // Удалить все сообщения, отправленные этому игроку
+        sentMessages.entrySet().removeIf(entry -> entry.getValue().getMessage().getReceiverId() == playerId);
     }
 
     public void receiveMessage() throws IOException {
@@ -216,10 +232,10 @@ public class SnakeServer {
                                 .setConfig(GameConfig.newBuilder()
                                         .setWidth(field.getWidth())
                                         .setHeight(field.getHeight())
-                                        .setFoodStatic(field.getFoods().size())
-                                        .setStateDelayMs((int) delayMS)
+                                        .setFoodStatic(field.getFoodCoefficientB())
+                                        .setStateDelayMs(field.getDelayMS())
                                         .build())
-                                .setCanJoin(true)
+                                .setCanJoin(players.size() < maxPlayerCount)
                                 .setGameName(serverName)
                                 .build())
                         .build())
@@ -298,6 +314,7 @@ public class SnakeServer {
     }
 
     private void handleAck(GameMessage message, InetAddress address, int port) {
+        sentMessages.remove(message.getMsgSeq());
         int playerId = getPlayerIdByAddress(address, port);
         if (playerId != -1) {
             lastAckTime.put(playerId, System.currentTimeMillis());
@@ -383,6 +400,7 @@ public class SnakeServer {
             multicastSocket.send(packet);
         } else {
             socket.send(packet);
+            sentMessages.put(updatedMessage.getMsgSeq(), new SentMessageInfo(updatedMessage, address, port, System.currentTimeMillis()));
         }
     }
     private int getPlayerIdByAddress(InetAddress address, int port) {

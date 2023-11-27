@@ -183,7 +183,7 @@ public class GameUI extends Application implements Observer {
             int height = Integer.parseInt(numbers[1]);
             adjustCellSize(width, height);
 
-            gameField = new GameField(width, height, 0, 0);
+            gameField = new GameField(width, height, 0, serverInfo.foodProperty().get(), serverInfo.stateDelayMsProperty().get());
 
             controller.startClient(playerName, serverInfo);
             gameRunning = true;
@@ -245,6 +245,9 @@ public class GameUI extends Application implements Observer {
         Label coefficientBLabel = new Label("Coefficient b:");
         TextField coefficientBTextField = new TextField();
 
+        Label gameSpeedLabel = new Label("Game Speed:");
+        TextField gameSpeedTextField = new TextField();
+
         Button confirmButton = new Button("Confirm");
         confirmButton.setOnAction(event -> {
             // Получаем введенные значения
@@ -254,14 +257,16 @@ public class GameUI extends Application implements Observer {
             int fieldHeight = Integer.parseInt(heightTextField.getText());
             int foodCoefficientA = Integer.parseInt(coefficientATextField.getText());
             int foodCoefficientB = Integer.parseInt(coefficientBTextField.getText());
+            int gameSpeed = Integer.parseInt(gameSpeedTextField.getText());
 
             // Создаём игру
-            GameField serverGameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB);
+            GameField serverGameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB, gameSpeed);
             startServer(gameName, serverGameField);
             joinGame(playerName, new ServerInfo(gameName,
                     0,
                     widthTextField.getText() + "x" + heightTextField.getText(),
-                    0,
+                    foodCoefficientB,
+                    gameSpeed,
                     controller.getServerIP(),
                     SnakeServer.MULTICAST_PORT));
 
@@ -273,8 +278,9 @@ public class GameUI extends Application implements Observer {
         VBox layout = new VBox();
         layout.setSpacing(10);
         layout.setPadding(new Insets(10));
-        layout.getChildren().addAll(playerNameLabel, playerNameTextField, nameLabel, nameTextField, sizeLabel, widthLabel, widthTextField, heightLabel, heightTextField,
-                                    formulaLabel, coefficientALabel, coefficientATextField, coefficientBLabel, coefficientBTextField, confirmButton);
+        layout.getChildren().addAll(playerNameLabel, playerNameTextField, nameLabel, nameTextField, sizeLabel, widthLabel,
+                widthTextField, heightLabel, heightTextField, formulaLabel, coefficientALabel, coefficientATextField,
+                coefficientBLabel, coefficientBTextField, gameSpeedLabel, gameSpeedTextField, confirmButton);
 
         Scene scene = new Scene(layout);
         createGameStage.setScene(scene);
@@ -401,6 +407,7 @@ public class GameUI extends Application implements Observer {
                         gameAnnouncement.getPlayers().getPlayersCount(),
                         String.format("%dx%d", gameAnnouncement.getConfig().getWidth(), gameAnnouncement.getConfig().getHeight()),
                         gameAnnouncement.getConfig().getFoodStatic(),
+                        gameAnnouncement.getConfig().getStateDelayMs(),
                         address.getHostAddress(),
                         port
                 );

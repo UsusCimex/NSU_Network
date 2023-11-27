@@ -12,12 +12,14 @@ public class ServerInfo {
     private final IntegerProperty food;
     private final StringProperty serverIP;
     private final IntegerProperty serverPort;
+    private final IntegerProperty stateDelayMs;
 
-    public ServerInfo(String serverName, int online, String areaSize, int food, String serverIP, int serverPort) {
+    public ServerInfo(String serverName, int online, String areaSize, int food, int gameSpeed, String serverIP, int serverPort) {
         this.serverName = new SimpleStringProperty(serverName);
         this.online = new SimpleIntegerProperty(online);
         this.areaSize = new SimpleStringProperty(areaSize);
         this.food = new SimpleIntegerProperty(food);
+        this.stateDelayMs = new SimpleIntegerProperty(gameSpeed);
         this.serverIP = new SimpleStringProperty(serverIP);
         this.serverPort = new SimpleIntegerProperty(serverPort);
     }
@@ -40,5 +42,6 @@ public class ServerInfo {
     public IntegerProperty foodProperty() {
         return food;
     }
+    public IntegerProperty stateDelayMsProperty() { return stateDelayMs; }
 }
 

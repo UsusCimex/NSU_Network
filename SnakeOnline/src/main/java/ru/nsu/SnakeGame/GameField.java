@@ -11,16 +11,18 @@ public class GameField {
     private final int height;
     private final int foodCoefficientA;
     private final int foodCoefficientB;
+    private final int delayMS;
     private List<Snake> snakes;
     private List<GameState.Coord> foods;
 
-    public GameField(int width, int height, int foodCoefficientA, int foodCoefficientB) {
+    public GameField(int width, int height, int foodCoefficientA, int foodCoefficientB, int delayMS) {
         this.width = width;
         this.height = height;
         this.foodCoefficientA = foodCoefficientA;
         this.foodCoefficientB = foodCoefficientB;
         this.snakes = new ArrayList<>();
         this.foods = new ArrayList<>();
+        this.delayMS = delayMS;
     }
 
     public ArrayList<GameState.Coord> findValidSnakePosition() {
@@ -100,6 +102,12 @@ public class GameField {
     public int amountOfFoodNeeded(int playerCount) {
         return foodCoefficientA * playerCount + foodCoefficientB;
     }
+    public int getFoodCoefficientA() {
+        return foodCoefficientA;
+    }
+    public int getFoodCoefficientB() {
+        return foodCoefficientB;
+    }
     public List<Snake> getSnakes() {
         return new ArrayList<>(snakes);
     }
@@ -111,5 +119,8 @@ public class GameField {
     }
     public synchronized void setSnakes(List<Snake> snakes) {
         this.snakes = snakes;
+    }
+    public int getDelayMS() {
+        return delayMS;
     }
 }

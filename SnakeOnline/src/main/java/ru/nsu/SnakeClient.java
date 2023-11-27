@@ -9,10 +9,12 @@ import ru.nsu.patterns.Observer;
 import java.io.IOException;
 import java.net.*;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SnakeClient {
+    private final int ACK_TIMEOUT = 50;
     private final Observer observer;
     private final AtomicLong msgSeq = new AtomicLong(0);
     private final DatagramSocket socket;
@@ -26,8 +28,10 @@ public class SnakeClient {
     private NodeRole nodeRole = NodeRole.NORMAL;
 
     private final ConcurrentHashMap<Integer, Long> lastMsgSeqReceived = new ConcurrentHashMap<>(); // Для отслеживания последнего msg_seq
+    private final ConcurrentHashMap<Long, SentMessageInfo> sentMessages = new ConcurrentHashMap<>();
 
-    Thread clientThread;
+    private Thread clientThread;
+    private Thread messageResenderThread;
 
     public SnakeClient(ServerInfo serverInfo, Observer observer) throws IOException {
         this.gameName = serverInfo.serverNameProperty().get();
@@ -51,13 +55,37 @@ public class SnakeClient {
             }
         });
 
+        messageResenderThread = new Thread(() -> {
+            while (!Thread.interrupted()) {
+                try {
+                    long currentTime = System.currentTimeMillis();
+                    for (Map.Entry<Long, SentMessageInfo> entry : sentMessages.entrySet()) {
+                        SentMessageInfo info = entry.getValue();
+                        if (currentTime - info.getTimestamp() > ACK_TIMEOUT) {
+                            try {
+                                sendGameMessage(info.getMessage(), info.getAddress(), info.getPort());
+                            } catch (IOException e) {
+                                System.err.println("Error resending message: " + e.getMessage());
+                            }
+                        }
+                    }
+                    Thread.sleep(1000); // Проверка каждую секунду
+                } catch (InterruptedException e) {
+                    System.err.println("[Client] Resend message error!");
+                    break;
+                }
+            }
+        });
+
         clientThread.start();
+        messageResenderThread.start();
     }
 
     public void stop() {
         if (socket != null) socket.close();
 
         if (clientThread != null) clientThread.interrupt();
+        if (messageResenderThread != null) messageResenderThread.interrupt();
     }
 
 //    private void handleServerDisconnection() {
@@ -171,7 +199,7 @@ public class SnakeClient {
     }
 
     private void handleAck(GameMessage message, InetAddress address, int port) {
-        // Обработка подтверждения сообщения.
+        sentMessages.remove(message.getMsgSeq());
     }
 
     private void handleError(GameMessage message, InetAddress address, int port) {
@@ -206,6 +234,7 @@ public class SnakeClient {
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, port);
         if (updatedMessage.getTypeCase() != GameMessage.TypeCase.ACK) {
             System.err.println("[Client] Send message " + updatedMessage.getTypeCase() + " to " + address + ":" + port);
+            sentMessages.put(updatedMessage.getMsgSeq(), new SentMessageInfo(updatedMessage, address, port, System.currentTimeMillis()));
         }
         socket.send(packet);
     }
