@@ -28,6 +28,7 @@ public class SnakeServer {
     private final long announcementDelayMS = 1000;
 
     private int senderId = 1;
+    private int deputyId = -1;
 
     private InetAddress serverAddress;
 
@@ -48,10 +49,17 @@ public class SnakeServer {
     private Thread playerChecker;
     private Thread gameLoop;
 
-    public SnakeServer(String name, int port, GameField gameField, String serverIP, MulticastSocket multicastSocket) throws IOException {
-        this.serverAddress = InetAddress.getByName(serverIP);
+    public SnakeServer(String name, GameField gameField, MulticastSocket multicastSocket) throws IOException {
+        String myAddress = Controller.getAddress("Wi-Fi");
+        System.err.println("My address: " + myAddress);
+        this.serverAddress = InetAddress.getByName(myAddress);
         serverName = name;
-        socket = new DatagramSocket(port, serverAddress); // Привязываем к конкретному адресу
+        socket = new DatagramSocket(MULTICAST_PORT, serverAddress); // Привязываем к конкретному адресу
+
+        if (gameField == null) {
+            throw new IllegalArgumentException("GameField must not be null");
+        }
+
         snakeGame = new GameLogic(gameField);
 
         this.multicastSocket = multicastSocket;
@@ -144,11 +152,6 @@ public class SnakeServer {
 
     private void checkInactivePlayers() {
         long currentTime = System.currentTimeMillis();
-        lastAckTime.forEach((playerId, lastTime) -> {
-            if (currentTime - lastTime > ACK_TIMEOUT) {
-                removePlayer(playerId);
-            }
-        });
 
         // Повторная отправка сообщений
         sentMessages.entrySet().removeIf(entry -> {
@@ -186,13 +189,14 @@ public class SnakeServer {
 
         if (message.getTypeCase() != GameMessage.TypeCase.ACK) {
             System.err.println("[Server] listened " + message.getTypeCase() + " from " + address + ":" + port);
-
-            int playerId = message.getSenderId();
-            long playerMsgSeq = message.getMsgSeq();
-            if (lastMsgSeqReceived.getOrDefault(playerId, -1L) >= playerMsgSeq) {
-                return; // Игнорируем устаревшее или дублированное сообщение
+            if (message.getTypeCase() != GameMessage.TypeCase.JOIN) {
+                int playerId = message.getSenderId();
+                long playerMsgSeq = message.getMsgSeq();
+                if (lastMsgSeqReceived.getOrDefault(playerId, -1L) >= playerMsgSeq) {
+                    return; // Игнорируем устаревшее или дублированное сообщение
+                }
+                lastMsgSeqReceived.put(playerId, playerMsgSeq);
             }
-            lastMsgSeqReceived.put(playerId, playerMsgSeq);
         }
         switch (message.getTypeCase()) {
             case PING  -> handlePing(message, address, port);
@@ -262,20 +266,13 @@ public class SnakeServer {
         GameMessage.JoinMsg join = message.getJoin();
         if (canPlayerJoin()) {
             int playerId = addNewPlayer(join.getPlayerName(), address, port, join.getRequestedRole());
-
             ArrayList<GameState.Coord> initialPosition = snakeGame.getGameField().findValidSnakePosition();
-
             Snake newSnake = new Snake(initialPosition, playerId);
             snakeGame.addSnake(newSnake);
         } else {
             System.err.println("[Server] Player " + join.getPlayerName() + " cannot join the game");
             sendError("Cannot join the game: no space", address, port);
         }
-    }
-
-    public void sendState(InetAddress address, int port) throws IOException {
-        GameMessage stateMessage = createStateMessage();
-        sendGameMessage(stateMessage, address, port);
     }
 
     public void sendStateForAll() throws IOException {
@@ -327,47 +324,8 @@ public class SnakeServer {
         System.err.println("[Server] Error: " + error.getErrorMessage() + " from " + address.toString() + port);
     }
 
-    // TODO: edit role logic!
     private void handleRoleChange(GameMessage message, InetAddress address, int port) {
-        // Обработка сообщения о смене роли игрока или сервера.
-        GameMessage.RoleChangeMsg roleChange = message.getRoleChange();
-        int senderId = message.hasSenderId() ? message.getSenderId() : -1;
-        NodeRole senderRole = roleChange.hasSenderRole() ? roleChange.getSenderRole() : NodeRole.NORMAL;
 
-        int receiverId = message.hasReceiverId() ? message.getReceiverId() : -1;
-        NodeRole receiverRole = roleChange.hasReceiverRole() ? roleChange.getReceiverRole() : NodeRole.NORMAL;
-
-        if (senderRole == NodeRole.MASTER && receiverRole == NodeRole.DEPUTY) {
-            // Логика обработки выхода Master и назначения нового Master
-            int newMasterId = findDeputy(); // Находим Deputy, который станет новым Master
-            if (newMasterId != -1) {
-                updatePlayerRole(newMasterId, NodeRole.MASTER);
-            }
-        }
-
-        if (receiverId != -1) {
-            updatePlayerRole(receiverId, receiverRole);
-        }
-    }
-
-    private int findDeputy() {
-        return players.values().stream()
-                .filter(player -> player.getRole() == NodeRole.DEPUTY)
-                .findFirst()
-                .map(GamePlayer::getId)
-                .orElse(-1);
-    }
-
-    private void updatePlayerRole(int playerId, NodeRole newRole) {
-        GamePlayer player = players.get(playerId);
-        if (player != null) {
-            GamePlayer updatedPlayer = GamePlayer.newBuilder()
-                    .mergeFrom(player) // Копируем значения из существующего объекта
-                    .setRole(newRole)   // Устанавливаем новую роль
-                    .build();
-
-            players.put(playerId, updatedPlayer);
-        }
     }
 
     private void sendError(String errorMessage, InetAddress address, int port) throws IOException {
@@ -423,5 +381,9 @@ public class SnakeServer {
         players.put(playerId, player);
         addressToPlayerId.put(new InetSocketAddress(address, port), playerId);
         return playerId;
+    }
+
+    public String getAddress() {
+        return serverAddress.getHostAddress();
     }
 }

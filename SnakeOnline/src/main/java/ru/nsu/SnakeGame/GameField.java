@@ -92,7 +92,7 @@ public class GameField {
         Random random = new Random();
         List<GameState.Coord> newFood = getFoods();
         for (GameState.Coord body : snake.getBody()) {
-            if (random.nextInt(100) < 25) { // 25% to spawn apple
+            if (random.nextInt(100) < 50) { // 50% to spawn apple
                 newFood.add(body);
             }
         }

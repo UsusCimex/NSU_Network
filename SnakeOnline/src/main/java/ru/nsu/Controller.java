@@ -13,7 +13,6 @@ import java.util.Enumeration;
 
 public class Controller {
     private final Observer UI;
-    private String serverIP;
     private MulticastSocket multicastSocket = null;
 
     private SnakeServer server = null;
@@ -23,13 +22,6 @@ public class Controller {
 
     public Controller(Observer UI) {
         this.UI = UI;
-        try {
-            this.serverIP = getAddress("Wi-Fi");
-            System.err.println("My ip: " + serverIP);
-        } catch (IOException e) {
-            e.printStackTrace();
-            throw new RuntimeException();
-        }
     }
 
     public static String getAddress(String networkName) throws IOException {
@@ -119,7 +111,7 @@ public class Controller {
     }
 
     public void startClient(String playerName, ServerInfo serverInfo) throws IOException {
-        client = new SnakeClient(serverInfo, UI);
+        client = new SnakeClient(serverInfo, UI, multicastSocket);
         client.start(playerName);
     }
 
@@ -137,7 +129,7 @@ public class Controller {
     }
 
     public void startServer(String gameName, GameField serverGameField) throws IOException {
-        server = new SnakeServer(gameName, SnakeServer.MULTICAST_PORT, serverGameField, serverIP, multicastSocket);
+        server = new SnakeServer(gameName, serverGameField, multicastSocket);
         server.start();
     }
 
@@ -151,6 +143,6 @@ public class Controller {
     }
 
     public String getServerIP() {
-        return serverIP;
+        return server.getAddress();
     }
 }

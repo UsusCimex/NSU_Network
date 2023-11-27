@@ -23,22 +23,34 @@ public class SnakeClient {
     private final String gameName;
     private int serverId = -1;
     private int clientId = -1;
-    private GameField gameField;
-
-    private NodeRole nodeRole = NodeRole.NORMAL;
+    private final GameField gameField;
+    private final NodeRole nodeRole = NodeRole.NORMAL;
 
     private final ConcurrentHashMap<Integer, Long> lastMsgSeqReceived = new ConcurrentHashMap<>(); // Для отслеживания последнего msg_seq
     private final ConcurrentHashMap<Long, SentMessageInfo> sentMessages = new ConcurrentHashMap<>();
 
     private Thread clientThread;
-    private Thread messageResenderThread;
+    private Thread messageResendThread;
 
-    public SnakeClient(ServerInfo serverInfo, Observer observer) throws IOException {
+    public SnakeClient(ServerInfo serverInfo, Observer observer, MulticastSocket multicastSocket) throws IOException {
         this.gameName = serverInfo.serverNameProperty().get();
         this.serverAddress = InetAddress.getByName(serverInfo.serverIPProperty().get());
         this.socket = new DatagramSocket();
         this.serverPort = serverInfo.serverPortProperty().get();
         this.observer = observer;
+
+        String[] numbers = serverInfo.areaSizeProperty().get().split("[^0-9]+");
+        int width = Integer.parseInt(numbers[0]);
+        int height = Integer.parseInt(numbers[1]);
+        this.gameField = new GameField(width, height, 0, serverInfo.foodProperty().get(), serverInfo.stateDelayMsProperty().get());
+
+        // Находим подходящий сетевой интерфейс
+        NetworkInterface networkInterface = Controller.findNetworkInterface("Wi-Fi");
+        if (networkInterface == null) {
+            System.err.println("Failed to find a suitable network interface for multicast");
+            return;
+        }
+        multicastSocket.setNetworkInterface(networkInterface);
     }
 
     public void start(String playerName) throws IOException {
@@ -55,7 +67,7 @@ public class SnakeClient {
             }
         });
 
-        messageResenderThread = new Thread(() -> {
+        messageResendThread = new Thread(() -> {
             while (!Thread.interrupted()) {
                 try {
                     long currentTime = System.currentTimeMillis();
@@ -78,30 +90,15 @@ public class SnakeClient {
         });
 
         clientThread.start();
-        messageResenderThread.start();
+        messageResendThread.start();
     }
 
     public void stop() {
         if (socket != null) socket.close();
 
         if (clientThread != null) clientThread.interrupt();
-        if (messageResenderThread != null) messageResenderThread.interrupt();
+        if (messageResendThread != null) messageResendThread.interrupt();
     }
-
-//    private void handleServerDisconnection() {
-//        // Проверить, может ли этот клиент стать сервером
-//        if (this.nodeRole == NodeRole.DEPUTY) {
-//            try {
-//                // Инициализация и запуск сервера
-//                SnakeServer newServer = new SnakeServer(gameName, 21212, gameField, "localhost");
-//                newServer.start();
-//                // Обновить свою роль до MASTER
-//                this.nodeRole = NodeRole.MASTER;
-//            } catch (IOException e) {
-//                System.err.println("Ошибка при становлении новым сервером");
-//            }
-//        }
-//    }
 
     public void sendJoinRequest(String playerName) throws IOException {
         GameMessage joinMessage = GameMessage.newBuilder()
@@ -206,7 +203,7 @@ public class SnakeClient {
         // Обработка сообщения об ошибке.
     }
     private void handleRoleChange(GameMessage message, InetAddress address, int port) {
-        // Обработка сообщения о смене роли игрока или сервера.
+
     }
 
     private void sendError(String errorMessage, InetAddress address, int port) throws IOException {
