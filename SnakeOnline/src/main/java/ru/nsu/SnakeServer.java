@@ -20,10 +20,10 @@ public class SnakeServer {
     public static final int MULTICAST_PORT = 8888;
 
     private final ConcurrentHashMap<Integer, Long> lastAckTime = new ConcurrentHashMap<>(); // Для отслеживания времени последнего Ack
-//    private final ConcurrentHashMap<Integer, Long> lastMsgSeqReceived = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, Long> lastMsgSeqReceived = new ConcurrentHashMap<>();
     private static final long ACK_TIMEOUT = 5000; // Таймаут в миллисекундах
 
-    private final long announcementDelayMS = 1000;
+    private final long announcementDelayMS = 2000;
 
     private int senderId = 1;
 
@@ -32,7 +32,7 @@ public class SnakeServer {
     private final AtomicLong msgSeq = new AtomicLong(0);
     private int stateOrder = 0;
     private final String serverName;
-    private final long delayMS = 450;
+    private final long delayMS = 1500;
     private GameLogic snakeGame = null;
     private final ConcurrentHashMap<Integer, GamePlayer> players = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<InetSocketAddress, Integer> addressToPlayerId = new ConcurrentHashMap<>();
@@ -167,18 +167,16 @@ public class SnakeServer {
         int port = packet.getPort();
 
         GameMessage message = GameMessage.parseFrom(trimmedData);
-//        System.err.println("[SERVER] RECEIVED: " + message.getTypeCase() + "(" + message.getMsgSeq() + ")");
-
-//        int playerId = message.getSenderId();
-//        long playerMsgSeq = message.getMsgSeq();
-//        System.err.println("[SERVER] Message: " + message.getTypeCase() + "\nGet: " + lastMsgSeqReceived.getOrDefault(playerId, -1L) + "\nHas: " + playerMsgSeq);
-//        if (lastMsgSeqReceived.getOrDefault(playerId, -1L) >= playerMsgSeq) {
-//            return; // Игнорируем устаревшее или дублированное сообщение
-//        }
-//        lastMsgSeqReceived.put(playerId, playerMsgSeq);
 
         if (message.getTypeCase() != GameMessage.TypeCase.ACK) {
             System.err.println("[Server] listened " + message.getTypeCase() + " from " + address + ":" + port);
+
+            int playerId = message.getSenderId();
+            long playerMsgSeq = message.getMsgSeq();
+            if (lastMsgSeqReceived.getOrDefault(playerId, -1L) >= playerMsgSeq) {
+                return; // Игнорируем устаревшее или дублированное сообщение
+            }
+            lastMsgSeqReceived.put(playerId, playerMsgSeq);
         }
         switch (message.getTypeCase()) {
             case PING  -> handlePing(message, address, port);
@@ -209,7 +207,7 @@ public class SnakeServer {
     private GameMessage createAnnouncementMessage() {
         GameField field = snakeGame.getGameField();
         return GameMessage.newBuilder()
-                .setMsgSeq(msgSeq.incrementAndGet())
+                .setMsgSeq(msgSeq.get())
                 .setAnnouncement(GameMessage.AnnouncementMsg.newBuilder()
                         .addGames(GameAnnouncement.newBuilder()
                                 .setPlayers(GamePlayers.newBuilder()
@@ -253,8 +251,6 @@ public class SnakeServer {
 
             Snake newSnake = new Snake(initialPosition, playerId);
             snakeGame.addSnake(newSnake);
-
-            sendState(address, port);
         } else {
             System.err.println("[Server] Player " + join.getPlayerName() + " cannot join the game");
             sendError("Cannot join the game: no space", address, port);
@@ -383,7 +379,6 @@ public class SnakeServer {
         if (updatedMessage.getTypeCase() != GameMessage.TypeCase.ACK) {
             System.err.println("[Server] Send message " + updatedMessage.getTypeCase() + " to " + address + ":" + port);
         }
-//        System.err.println("[SERVER] SEND: " + gameMessage.getTypeCase() + "(" + msgSeq.get() + ")");
         if (updatedMessage.getTypeCase() == GameMessage.TypeCase.ANNOUNCEMENT) {
             multicastSocket.send(packet);
         } else {

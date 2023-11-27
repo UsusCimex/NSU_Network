@@ -9,6 +9,7 @@ import ru.nsu.patterns.Observer;
 import java.io.IOException;
 import java.net.*;
 import java.util.Arrays;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SnakeClient {
@@ -24,7 +25,7 @@ public class SnakeClient {
 
     private NodeRole nodeRole = NodeRole.NORMAL;
 
-//    private final ConcurrentHashMap<Integer, Long> lastMsgSeqReceived = new ConcurrentHashMap<>(); // Для отслеживания последнего msg_seq
+    private final ConcurrentHashMap<Integer, Long> lastMsgSeqReceived = new ConcurrentHashMap<>(); // Для отслеживания последнего msg_seq
 
     Thread clientThread;
 
@@ -110,8 +111,6 @@ public class SnakeClient {
 
         GameMessage message = GameMessage.parseFrom(trimmedData);
 
-//        System.err.println("[CLIENT] RECEIVED: " + message.getTypeCase() + "(" + message.getMsgSeq() + ")");
-
         if (serverId == -1) {
             serverId = message.getSenderId();
         }
@@ -119,16 +118,15 @@ public class SnakeClient {
             clientId = message.getReceiverId();
         }
 
-//        int playerId = message.getSenderId();
-//        long playerMsgSeq = message.getMsgSeq();
-//        System.err.println("[CLIENT] Message: " + message.getTypeCase() + "\nGet: " + lastMsgSeqReceived.getOrDefault(playerId, -1L) + "\nHas: " + playerMsgSeq);
-//        if (lastMsgSeqReceived.getOrDefault(playerId, -1L) >= playerMsgSeq) {
-//            return; // Игнорируем устаревшее или дублированное сообщение
-//        }
-//        lastMsgSeqReceived.put(playerId, playerMsgSeq);
-
         if (message.getTypeCase() != GameMessage.TypeCase.ACK) {
             System.err.println("[Client] listened " + message.getTypeCase() + " from " + address + ":" + port);
+
+            int playerId = message.getSenderId();
+            long playerMsgSeq = message.getMsgSeq();
+            if (lastMsgSeqReceived.getOrDefault(playerId, -1L) >= playerMsgSeq) {
+                return; // Игнорируем устаревшее или дублированное сообщение
+            }
+            lastMsgSeqReceived.put(playerId, playerMsgSeq);
         }
         switch (message.getTypeCase()) {
             case PING  -> handlePing(message, address, port);
@@ -209,7 +207,6 @@ public class SnakeClient {
         if (updatedMessage.getTypeCase() != GameMessage.TypeCase.ACK) {
             System.err.println("[Client] Send message " + updatedMessage.getTypeCase() + " to " + address + ":" + port);
         }
-//        System.err.println("[CLIENT] SEND: " + gameMessage.getTypeCase() + "(" + msgSeq.get() + ")");
         socket.send(packet);
     }
 }
