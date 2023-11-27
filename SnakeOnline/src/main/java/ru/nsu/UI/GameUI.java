@@ -260,19 +260,29 @@ public class GameUI extends Application implements Observer {
                 playerName = playerNameTextField.getText();
                 gameName = nameTextField.getText();
                 fieldWidth = Integer.parseInt(widthTextField.getText());
-                if (fieldWidth < 10 || fieldWidth > 100) throw new NumberFormatException();
+                if (fieldWidth < 10 || fieldWidth > 100) throw new NumberFormatException("width");
                 fieldHeight = Integer.parseInt(heightTextField.getText());
-                if (fieldHeight < 10 || fieldHeight > 100) throw new NumberFormatException();
+                if (fieldHeight < 10 || fieldHeight > 100) throw new NumberFormatException("height");
                 foodCoefficientA = Integer.parseInt(coefficientATextField.getText());
                 foodCoefficientB = Integer.parseInt(coefficientBTextField.getText());
-                if (foodCoefficientA + foodCoefficientB > fieldWidth * fieldHeight) throw new NumberFormatException();
+                if (foodCoefficientA + foodCoefficientB > fieldWidth * fieldHeight) throw new NumberFormatException("food");
                 gameSpeed = Integer.parseInt(gameSpeedTextField.getText());
-                if (gameSpeed < 100 || gameSpeed > 5000) throw new NumberFormatException();
+                if (gameSpeed < 100 || gameSpeed > 5000) throw new NumberFormatException("speed");
             } catch (NumberFormatException e) {
+                switch (e.getMessage()) {
+                    case "width" -> widthTextField.clear();
+                    case "height" -> heightTextField.clear();
+                    case "coefficients" -> {
+                        coefficientATextField.clear();
+                        coefficientBTextField.clear();
+                    }
+                    case "food" -> gameSpeedTextField.clear();
+                }
+
                 Alert alert = new Alert(Alert.AlertType.ERROR);
                 alert.setTitle("Ошибка");
                 alert.setHeaderText(null);
-                alert.setContentText("Введите правильные данные");
+                alert.setContentText("Введите правильные данные:\n" + e.getMessage());
 
                 alert.showAndWait();
                 dataIsValid = false;
