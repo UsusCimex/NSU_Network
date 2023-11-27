@@ -87,6 +87,14 @@ public class GameField {
         snakes.add(snake);
     }
     public synchronized void removeSnake(Snake snake) {
+        Random random = new Random();
+        List<GameState.Coord> newFood = getFoods();
+        for (GameState.Coord body : snake.getBody()) {
+            if (random.nextInt(100) < 25) { // 25% to spawn apple
+                newFood.add(body);
+            }
+        }
+        setFoods(newFood);
         snakes.remove(snake);
     }
     public int amountOfFoodNeeded(int playerCount) {
@@ -98,7 +106,7 @@ public class GameField {
     public List<GameState.Coord> getFoods() {
         return new ArrayList<>(foods);
     }
-    public void setFoods(List<GameState.Coord> foods) {
+    public synchronized void setFoods(List<GameState.Coord> foods) {
         this.foods = foods;
     }
     public synchronized void setSnakes(List<Snake> snakes) {

@@ -12,12 +12,27 @@ public class GameLogic {
         this.gameField = gameField;
     }
 
+    public static void editGameFieldFromState(GameField gameField, GameMessage.StateMsg stateMsg) {
+        if (gameField == null || stateMsg == null) return;
+        gameField.setFoods(stateMsg.getState().getFoodsList());
+        for (Snake snake : gameField.getSnakes()) {
+            snake.clearUpdated();
+        }
+        for (GameState.Snake snake : stateMsg.getState().getSnakesList()) {
+            gameField.updateSnake(Snake.parseSnake(snake));
+        }
+        for (Snake snake : gameField.getSnakes()) {
+            if (!snake.isUpdated()) {
+                gameField.removeSnake(snake);
+            }
+        }
+    }
+
     public void update() {
-        if (gameField.getFoods().size() != gameField.amountOfFoodNeeded(gameField.getSnakes().size())) {
-            System.err.println("[GameLogic] Needed " + gameField.amountOfFoodNeeded(gameField.getSnakes().size()) + " apples");
-            List<GameState.Coord> newCoord = new ArrayList<>();
-            gameField.setFoods(newCoord);
-            for (int i = 0; i < gameField.amountOfFoodNeeded(gameField.getSnakes().size()); ++i) {
+        if (gameField.getFoods().size() < gameField.amountOfFoodNeeded(gameField.getSnakes().size())) {
+            int appleNeeded = gameField.amountOfFoodNeeded(gameField.getSnakes().size()) - gameField.getFoods().size();
+            System.err.println("[GameLogic] Needed " + appleNeeded + " apples");
+            for (int i = 0; i < appleNeeded; ++i) {
                 placeFood();
             }
         }

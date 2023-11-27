@@ -20,7 +20,9 @@ import javafx.stage.Screen;
 import javafx.stage.Stage;
 import ru.nsu.Controller;
 import ru.nsu.SnakeGame.GameField;
+import ru.nsu.SnakeGame.GameLogic;
 import ru.nsu.SnakeGame.Snake;
+import ru.nsu.SnakeServer;
 import ru.nsu.SnakesProto.*;
 import ru.nsu.patterns.Observer;
 
@@ -261,7 +263,7 @@ public class GameUI extends Application implements Observer {
                     widthTextField.getText() + "x" + heightTextField.getText(),
                     0,
                     controller.getServerIP(),
-                    21212));
+                    SnakeServer.MULTICAST_PORT));
 
             // Закрываем форму создания игры
             createGameStage.close();
@@ -343,18 +345,7 @@ public class GameUI extends Application implements Observer {
     public void update(Object message, InetAddress address, int port) {
         if (message instanceof GameMessage.StateMsg) {
             GameMessage.StateMsg stateMsg = (GameMessage.StateMsg) message;
-            gameField.setFoods(stateMsg.getState().getFoodsList());
-            for (Snake snake : gameField.getSnakes()) {
-                snake.clearUpdated();
-            }
-            for (GameState.Snake snake : stateMsg.getState().getSnakesList()) {
-                gameField.updateSnake(Snake.parseSnake(snake));
-            }
-            for (Snake snake : gameField.getSnakes()) {
-                if (!snake.isUpdated()) {
-                    gameField.removeSnake(snake);
-                }
-            }
+            GameLogic.editGameFieldFromState(gameField, stateMsg);
             render();
 
             GamePlayers gamePlayers = stateMsg.getState().getPlayers();

@@ -16,34 +16,51 @@ public class SnakeServer {
 //    public static final String MULTICAST_ADDRESS = "239.192.0.4";
 //    public static final int GAME_MULTICAST_PORT = 9192;
 
-    public static final String MULTICAST_ADDRESS = "224.0.0.1";
-    public static final int GAME_MULTICAST_PORT = 8888;
+    public static final String MULTICAST_ADDRESS = "224.0.1.1";
+    public static final int MULTICAST_PORT = 8888;
+
+    private final ConcurrentHashMap<Integer, Long> lastAckTime = new ConcurrentHashMap<>(); // Для отслеживания времени последнего Ack
+//    private final ConcurrentHashMap<Integer, Long> lastMsgSeqReceived = new ConcurrentHashMap<>();
+    private static final long ACK_TIMEOUT = 5000; // Таймаут в миллисекундах
 
     private final long announcementDelayMS = 1000;
+
+    private int senderId = 1;
 
     private InetAddress serverAddress;
 
     private final AtomicLong msgSeq = new AtomicLong(0);
     private int stateOrder = 0;
     private final String serverName;
-    private final long delayMS = 500;
+    private final long delayMS = 450;
     private GameLogic snakeGame = null;
     private final ConcurrentHashMap<Integer, GamePlayer> players = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<InetSocketAddress, Integer> addressToPlayerId = new ConcurrentHashMap<>();
-    private int currentMaxId = 0;  // Простой способ генерировать ID для новых игроков
+    private int currentMaxId = 0;
     private int playerCount = 0;
     private int maxPlayerCount = 5;
     private final DatagramSocket socket;
+    private final MulticastSocket multicastSocket;
 
     Thread serverListener;
     Thread announcementThread;
+    Thread playerChecker;
     Thread gameLoop;
 
-    public SnakeServer(String name, int port, GameField gameField, String serverIP) throws IOException {
+    public SnakeServer(String name, int port, GameField gameField, String serverIP, MulticastSocket multicastSocket) throws IOException {
         this.serverAddress = InetAddress.getByName(serverIP);
         serverName = name;
         socket = new DatagramSocket(port, serverAddress); // Привязываем к конкретному адресу
         snakeGame = new GameLogic(gameField);
+
+        this.multicastSocket = multicastSocket;
+        // Находим подходящий сетевой интерфейс
+        NetworkInterface networkInterface = Controller.findNetworkInterface("Wi-Fi");
+        if (networkInterface == null) {
+            System.err.println("Failed to find a suitable network interface for multicast");
+            return;
+        }
+        multicastSocket.setNetworkInterface(networkInterface);
     }
 
     public void start() throws IOException {
@@ -61,7 +78,7 @@ public class SnakeServer {
         announcementThread = new Thread(() -> {
             while (!announcementThread.isInterrupted()) {
                 try {
-                    sendAnnouncement(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.GAME_MULTICAST_PORT);
+                    sendAnnouncement(InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS), SnakeServer.MULTICAST_PORT);
                     Thread.sleep(announcementDelayMS);
                 } catch (InterruptedException | IOException e) {
                     System.err.println("[Server] Announcement send error!");
@@ -77,8 +94,20 @@ public class SnakeServer {
                     snakeGame.update();
                     updatePlayersScore();
                     sendStateForAll();
-                } catch (IOException | InterruptedException e) {
+                } catch (InterruptedException | IOException e) {
                     System.err.println("[Server] Game loop destroyed...");
+                    break;
+                }
+            }
+        });
+
+        playerChecker = new Thread(() -> {
+            while (!playerChecker.isInterrupted()) {
+                try {
+                    Thread.sleep(ACK_TIMEOUT);
+                    checkInactivePlayers();
+                } catch (InterruptedException e) {
+                    System.err.println("[Server] player checker destroyed...");
                     break;
                 }
             }
@@ -87,6 +116,7 @@ public class SnakeServer {
         serverListener.start();
         announcementThread.start();
         gameLoop.start();
+        playerChecker.start();
     }
 
     public void updatePlayersScore() {
@@ -104,10 +134,27 @@ public class SnakeServer {
     }
     public void stop() {
         if (socket != null) socket.close();
+        if (multicastSocket != null) multicastSocket.close();
 
         if(serverListener != null) serverListener.interrupt();
         if(announcementThread != null) announcementThread.interrupt();
         if(gameLoop != null) gameLoop.interrupt();
+        if(playerChecker != null) playerChecker.interrupt();
+    }
+
+    private void checkInactivePlayers() {
+        long currentTime = System.currentTimeMillis();
+        lastAckTime.forEach((playerId, lastTime) -> {
+            if (currentTime - lastTime > ACK_TIMEOUT) {
+                removePlayer(playerId);
+            }
+        });
+    }
+
+    private void removePlayer(int playerId) {
+        players.remove(playerId);
+        addressToPlayerId.values().removeIf(id -> id == playerId);
+        // Дополнительная логика по удалению игрока, если необходимо
     }
 
     public void receiveMessage() throws IOException {
@@ -121,6 +168,16 @@ public class SnakeServer {
         int port = packet.getPort();
 
         GameMessage message = GameMessage.parseFrom(trimmedData);
+//        System.err.println("[SERVER] RECEIVED: " + message.getTypeCase() + "(" + message.getMsgSeq() + ")");
+
+//        int playerId = message.getSenderId();
+//        long playerMsgSeq = message.getMsgSeq();
+//        System.err.println("[SERVER] Message: " + message.getTypeCase() + "\nGet: " + lastMsgSeqReceived.getOrDefault(playerId, -1L) + "\nHas: " + playerMsgSeq);
+//        if (lastMsgSeqReceived.getOrDefault(playerId, -1L) >= playerMsgSeq) {
+//            return; // Игнорируем устаревшее или дублированное сообщение
+//        }
+//        lastMsgSeqReceived.put(playerId, playerMsgSeq);
+
         if (message.getTypeCase() != GameMessage.TypeCase.ACK) {
             System.err.println("[Server] listened " + message.getTypeCase() + " from " + address + ":" + port);
         }
@@ -134,7 +191,7 @@ public class SnakeServer {
             case ERROR -> handleError(message, address, port);
             case ROLE_CHANGE -> handleRoleChange(message, address, port);
             default    -> {
-                System.err.println("Unknown message type (" + message.getTypeCase() + ") from " + address.toString() + port);
+                System.err.println("[Server] Unknown message type (" + message.getTypeCase() + ") from " + address.toString() + port);
                 sendError("Unknown message type", address, port);
                 return;
             }
@@ -184,7 +241,7 @@ public class SnakeServer {
             Direction direction = steer.getDirection(); // Получение нового направления из сообщения
             snakeGame.updateDirection(playerId, direction); // Обновление направления для змеи игрока
         } else {
-            System.err.println("Unknown player from " + address + ":" + port);
+            System.err.println("[Server] Unknown player from " + address + ":" + port);
         }
     }
 
@@ -198,10 +255,9 @@ public class SnakeServer {
             Snake newSnake = new Snake(initialPosition, playerId);
             snakeGame.addSnake(newSnake);
 
-            sendAcknowledgement(message.getMsgSeq(), address, port);
             sendState(address, port);
         } else {
-            System.err.println("Player " + join.getPlayerName() + " cannot join the game");
+            System.err.println("[Server] Player " + join.getPlayerName() + " cannot join the game");
             sendError("Cannot join the game: no space", address, port);
         }
     }
@@ -213,7 +269,7 @@ public class SnakeServer {
 
     public void sendStateForAll() throws IOException {
         GameMessage stateMessage = createStateMessage();
-        for (GamePlayer player : players.values()) {
+        for (GamePlayer player : new ArrayList<>(players.values())) {
             sendGameMessage(stateMessage, InetAddress.getByName(player.getIpAddress()), player.getPort());
         }
     }
@@ -247,15 +303,19 @@ public class SnakeServer {
     }
 
     private void handleAck(GameMessage message, InetAddress address, int port) {
-        // Обработка подтверждения сообщения.
+        int playerId = getPlayerIdByAddress(address, port);
+        if (playerId != -1) {
+            lastAckTime.put(playerId, System.currentTimeMillis());
+        }
     }
 
     private void handleError(GameMessage message, InetAddress address, int port) {
         // Обработка сообщения об ошибке.
         GameMessage.ErrorMsg error = message.getError();
-        System.err.println("Error: " + error.getErrorMessage() + " from " + address.toString() + port);
+        System.err.println("[Server] Error: " + error.getErrorMessage() + " from " + address.toString() + port);
     }
-    // edit it
+
+    // TODO: edit role logic!
     private void handleRoleChange(GameMessage message, InetAddress address, int port) {
         // Обработка сообщения о смене роли игрока или сервера.
         GameMessage.RoleChangeMsg roleChange = message.getRoleChange();
@@ -265,13 +325,25 @@ public class SnakeServer {
         int receiverId = message.hasReceiverId() ? message.getReceiverId() : -1;
         NodeRole receiverRole = roleChange.hasReceiverRole() ? roleChange.getReceiverRole() : NodeRole.NORMAL;
 
-        if (senderRole == NodeRole.MASTER) {
-            updatePlayerRole(senderId, NodeRole.MASTER);
+        if (senderRole == NodeRole.MASTER && receiverRole == NodeRole.DEPUTY) {
+            // Логика обработки выхода Master и назначения нового Master
+            int newMasterId = findDeputy(); // Находим Deputy, который станет новым Master
+            if (newMasterId != -1) {
+                updatePlayerRole(newMasterId, NodeRole.MASTER);
+            }
         }
 
         if (receiverId != -1) {
             updatePlayerRole(receiverId, receiverRole);
         }
+    }
+
+    private int findDeputy() {
+        return players.values().stream()
+                .filter(player -> player.getRole() == NodeRole.DEPUTY)
+                .findFirst()
+                .map(GamePlayer::getId)
+                .orElse(-1);
     }
 
     private void updatePlayerRole(int playerId, NodeRole newRole) {
@@ -303,12 +375,21 @@ public class SnakeServer {
         sendGameMessage(ack, address, port);
     }
     private void sendGameMessage(GameMessage gameMessage, InetAddress address, int port) throws IOException {
-        byte[] buffer = gameMessage.toByteArray();
+        GameMessage updatedMessage = GameMessage.newBuilder(gameMessage)
+                .setSenderId(this.senderId)
+                .setReceiverId(addressToPlayerId.getOrDefault(new InetSocketAddress(address, port), -1))
+                .build();
+        byte[] buffer = updatedMessage.toByteArray();
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, port);
-        if (gameMessage.getTypeCase() != GameMessage.TypeCase.ACK) {
-            System.err.println("[Server] Send message " + gameMessage.getTypeCase() + " to " + address + ":" + port);
+        if (updatedMessage.getTypeCase() != GameMessage.TypeCase.ACK) {
+            System.err.println("[Server] Send message " + updatedMessage.getTypeCase() + " to " + address + ":" + port);
         }
-        socket.send(packet);
+//        System.err.println("[SERVER] SEND: " + gameMessage.getTypeCase() + "(" + msgSeq.get() + ")");
+        if (updatedMessage.getTypeCase() == GameMessage.TypeCase.ANNOUNCEMENT) {
+            multicastSocket.send(packet);
+        } else {
+            socket.send(packet);
+        }
     }
     private int getPlayerIdByAddress(InetAddress address, int port) {
         // Поиск ID игрока по адресу и порту
