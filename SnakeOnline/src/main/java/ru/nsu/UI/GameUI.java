@@ -232,9 +232,9 @@ public class GameUI extends Application implements Observer {
         TextField nameTextField = new TextField();
 
         Label sizeLabel = new Label("Field Size:");
-        Label widthLabel = new Label("Width:");
+        Label widthLabel = new Label("Width (10 - 100):");
         TextField widthTextField = new TextField();
-        Label heightLabel = new Label("Height:");
+        Label heightLabel = new Label("Height (10 - 100):");
         TextField heightTextField = new TextField();
 
         // Добавляем компоненты для формулы ax + b
@@ -245,33 +245,54 @@ public class GameUI extends Application implements Observer {
         Label coefficientBLabel = new Label("Coefficient b:");
         TextField coefficientBTextField = new TextField();
 
-        Label gameSpeedLabel = new Label("Game Speed:");
+        Label gameSpeedLabel = new Label("Game Speed (100 - 5000):");
         TextField gameSpeedTextField = new TextField();
 
         Button confirmButton = new Button("Confirm");
         confirmButton.setOnAction(event -> {
+            boolean dataIsValid = true;
             // Получаем введенные значения
-            String playerName = playerNameTextField.getText();
-            String gameName = nameTextField.getText();
-            int fieldWidth = Integer.parseInt(widthTextField.getText());
-            int fieldHeight = Integer.parseInt(heightTextField.getText());
-            int foodCoefficientA = Integer.parseInt(coefficientATextField.getText());
-            int foodCoefficientB = Integer.parseInt(coefficientBTextField.getText());
-            int gameSpeed = Integer.parseInt(gameSpeedTextField.getText());
+            String playerName = "playerName", gameName = "gameName";
+            int fieldWidth = 0, fieldHeight = 0,
+                foodCoefficientA = 0, foodCoefficientB = 0,
+                gameSpeed = 0;
+            try {
+                playerName = playerNameTextField.getText();
+                gameName = nameTextField.getText();
+                fieldWidth = Integer.parseInt(widthTextField.getText());
+                if (fieldWidth < 10 || fieldWidth > 100) throw new NumberFormatException();
+                fieldHeight = Integer.parseInt(heightTextField.getText());
+                if (fieldHeight < 10 || fieldHeight > 100) throw new NumberFormatException();
+                foodCoefficientA = Integer.parseInt(coefficientATextField.getText());
+                foodCoefficientB = Integer.parseInt(coefficientBTextField.getText());
+                if (foodCoefficientA + foodCoefficientB > fieldWidth * fieldHeight) throw new NumberFormatException();
+                gameSpeed = Integer.parseInt(gameSpeedTextField.getText());
+                if (gameSpeed < 100 || gameSpeed > 5000) throw new NumberFormatException();
+            } catch (NumberFormatException e) {
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setTitle("Ошибка");
+                alert.setHeaderText(null);
+                alert.setContentText("Введите правильные данные");
 
-            // Создаём игру
-            GameField serverGameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB, gameSpeed);
-            startServer(gameName, serverGameField);
-            joinGame(playerName, new ServerInfo(gameName,
-                    0,
-                    widthTextField.getText() + "x" + heightTextField.getText(),
-                    foodCoefficientB,
-                    gameSpeed,
-                    controller.getServerIP(),
-                    SnakeServer.MULTICAST_PORT));
+                alert.showAndWait();
+                dataIsValid = false;
+            }
 
-            // Закрываем форму создания игры
-            createGameStage.close();
+            if (dataIsValid) {
+                // Создаём игру
+                GameField serverGameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB, gameSpeed);
+                startServer(gameName, serverGameField);
+                joinGame(playerName, new ServerInfo(gameName,
+                        0,
+                        widthTextField.getText() + "x" + heightTextField.getText(),
+                        foodCoefficientB,
+                        gameSpeed,
+                        controller.getServerIP(),
+                        SnakeServer.MULTICAST_PORT));
+
+                // Закрываем форму создания игры
+                createGameStage.close();
+            }
         });
 
         // Создаем и настраиваем layout для формы
