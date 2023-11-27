@@ -19,7 +19,7 @@ public class GameLogic {
             snake.clearUpdated();
         }
         for (GameState.Snake snake : stateMsg.getState().getSnakesList()) {
-            gameField.updateSnake(Snake.parseSnake(snake));
+            gameField.updateSnake(Snake.parseSnake(snake, gameField.getHeight(), gameField.getWidth()));
         }
         for (Snake snake : gameField.getSnakes()) {
             if (!snake.isUpdated()) {
@@ -52,8 +52,6 @@ public class GameLogic {
                 List<GameState.Coord> temp = gameField.getFoods();
                 temp.remove(snake.getHead());
                 gameField.setFoods(temp);
-
-                placeFood(); // Размещаем новую еду
             }
 
             for (Snake anotherSnake : gameField.getSnakes()) {

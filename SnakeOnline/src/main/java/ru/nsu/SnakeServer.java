@@ -16,7 +16,7 @@ public class SnakeServer {
 //    public static final String MULTICAST_ADDRESS = "239.192.0.4";
 //    public static final int GAME_MULTICAST_PORT = 9192;
 
-    public static final String MULTICAST_ADDRESS = "224.0.1.1";
+    public static final String MULTICAST_ADDRESS = "224.0.0.1";
     public static final int MULTICAST_PORT = 8888;
 
     private final ConcurrentHashMap<Integer, Long> lastAckTime = new ConcurrentHashMap<>(); // Для отслеживания времени последнего Ack
@@ -134,7 +134,6 @@ public class SnakeServer {
     }
     public void stop() {
         if (socket != null) socket.close();
-        if (multicastSocket != null) multicastSocket.close();
 
         if(serverListener != null) serverListener.interrupt();
         if(announcementThread != null) announcementThread.interrupt();
@@ -283,7 +282,7 @@ public class SnakeServer {
 
         // Преобразуем каждую змею в структуру Snake из библиотеки Protobuf
         for (Snake snake : snakeGame.getGameField().getSnakes()) {
-            gameStateBuilder.addSnakes(Snake.generateSnakeProto(snake));
+            gameStateBuilder.addSnakes(Snake.generateSnakeProto(snake, snakeGame.getGameField().getHeight(), snakeGame.getGameField().getWidth()));
         }
 
         // Добавляем игроков

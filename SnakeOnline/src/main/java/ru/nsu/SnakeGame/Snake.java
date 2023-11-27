@@ -27,7 +27,7 @@ public class Snake {
         this.color = Color.rgb(random.nextInt(256), random.nextInt(256), random.nextInt(256));
     }
 
-    public static Snake parseSnake(GameState.Snake snake) {
+    public static Snake parseSnake(GameState.Snake snake, int height, int width) {
         ArrayList<GameState.Coord> bodySnake = new ArrayList<>();
         GameState.Coord head = snake.getPoints(0);
         bodySnake.add(head);
@@ -40,11 +40,16 @@ public class Snake {
 
             // Добавляем каждую точку смещения между ключевыми точками
             for (int j = 0; j < Math.abs(offset.getX()); j++) {
-                x += Integer.signum(offset.getX()); // Увеличиваем или уменьшаем x в зависимости от знака смещения
+                x += Integer.signum(offset.getX());
+                if (x < 0) x += width; // Обработка выхода за левую границу
+                else if (x >= width) x -= width; // Обработка выхода за правую границу
                 bodySnake.add(GameState.Coord.newBuilder().setX(x).setY(y).build());
             }
+
             for (int j = 0; j < Math.abs(offset.getY()); j++) {
-                y += Integer.signum(offset.getY()); // Увеличиваем или уменьшаем y в зависимости от знака смещения
+                y += Integer.signum(offset.getY());
+                if (y < 0) y += height; // Обработка выхода за верхнюю границу
+                else if (y >= height) y -= height; // Обработка выхода за нижнюю границу
                 bodySnake.add(GameState.Coord.newBuilder().setX(x).setY(y).build());
             }
         }
@@ -52,7 +57,7 @@ public class Snake {
         return new Snake(bodySnake, snake.getPlayerId());
     }
 
-    public static GameState.Snake generateSnakeProto(Snake snake) {
+    public static GameState.Snake generateSnakeProto(Snake snake, int height, int width) {
         GameState.Snake.Builder snakeBuilder = GameState.Snake.newBuilder();
         List<GameState.Coord> body = new ArrayList<>(snake.getBody());
 
@@ -71,15 +76,28 @@ public class Snake {
                 int deltaX = currentX - prevX;
                 int deltaY = currentY - prevY;
 
+                // Корректируем deltaX и deltaY для обработки перехода через границы
+                if (Math.abs(deltaX) > width / 2) {
+                    deltaX = width - Math.abs(deltaX); // Корректировка для X
+                    if (currentX > prevX) {
+                        deltaX = -deltaX;
+                    }
+                }
+
+                if (Math.abs(deltaY) > height / 2) {
+                    deltaY = height - Math.abs(deltaY); // Корректировка для Y
+                    if (currentY > prevY) {
+                        deltaY = -deltaY;
+                    }
+                }
+
                 // Проверяем, изменилось ли направление
                 if ((deltaX != 0 && cumulativeY != 0) || (deltaY != 0 && cumulativeX != 0)) {
-                    // Направление изменилось, добавляем накопленное смещение и обнуляем накопитель
                     snakeBuilder.addPoints(GameState.Coord.newBuilder().setX(cumulativeX).setY(cumulativeY).build());
                     cumulativeX = 0;
                     cumulativeY = 0;
                 }
 
-                // Накапливаем смещение
                 cumulativeX += deltaX;
                 cumulativeY += deltaY;
 
@@ -141,12 +159,7 @@ public class Snake {
                 .setY((gameField.getWidth() + head.getY() + dy) % gameField.getHeight())
                 .build();
 
-        // Проверяем, не вышла ли змея за границы поля или не врезалась ли в себя
-//        if (newHead.getX() < 0 || newHead.getY() < 0 || newHead.getX() >= gameField.getWidth()
-//                || newHead.getY() >= gameField.getHeight() || body.contains(newHead)) {
-//            return false;
-//        }
-
+        // Проверяем не врезалась ли в себя
         if (body.contains(newHead)) {
             return false;
         }
