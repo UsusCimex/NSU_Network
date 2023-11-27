@@ -156,7 +156,7 @@ public class Snake {
         }
         GameState.Coord newHead = GameState.Coord.newBuilder()
                 .setX((gameField.getWidth() + head.getX() + dx) % gameField.getWidth())
-                .setY((gameField.getWidth() + head.getY() + dy) % gameField.getHeight())
+                .setY((gameField.getHeight() + head.getY() + dy) % gameField.getHeight())
                 .build();
 
         // Проверяем не врезалась ли в себя

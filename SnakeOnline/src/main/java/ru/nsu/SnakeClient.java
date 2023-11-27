@@ -99,7 +99,7 @@ public class SnakeClient {
     }
 
     private void receiveMessage() throws IOException {
-        byte[] buffer = new byte[256];
+        byte[] buffer = new byte[4096];
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         socket.receive(packet);
 

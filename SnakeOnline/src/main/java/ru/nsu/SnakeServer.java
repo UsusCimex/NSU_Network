@@ -157,7 +157,7 @@ public class SnakeServer {
     }
 
     public void receiveMessage() throws IOException {
-        byte[] buf = new byte[256];
+        byte[] buf = new byte[4096];
         DatagramPacket packet = new DatagramPacket(buf, buf.length);
         socket.receive(packet);
 
