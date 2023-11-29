@@ -1,6 +1,7 @@
 package ru.nsu.SnakeGame;
 
 import ru.nsu.SnakesProto.*;
+import ru.nsu.UI.ServerInfo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,18 +15,30 @@ public class GameField {
     private final int delayMS;
     private List<Snake> snakes;
     private List<GameState.Coord> foods;
+    public GameField(ServerInfo serverInfo) {
+        String[] numbers = serverInfo.areaSizeProperty().get().split("[^0-9]+");
+        this.width = Integer.parseInt(numbers[0]);
+        this.height = Integer.parseInt(numbers[1]);
+        this.foodCoefficientA = serverInfo.foodCoefficientAProperty().get();
+        this.foodCoefficientB = serverInfo.foodCoefficientBProperty().get();
+        this.delayMS = serverInfo.stateDelayMsProperty().get();
+
+        this.snakes = new ArrayList<>();
+        this.foods = new ArrayList<>();
+    }
 
     public GameField(int width, int height, int foodCoefficientA, int foodCoefficientB, int delayMS) {
         this.width = width;
         this.height = height;
         this.foodCoefficientA = foodCoefficientA;
         this.foodCoefficientB = foodCoefficientB;
+        this.delayMS = delayMS;
+
         this.snakes = new ArrayList<>();
         this.foods = new ArrayList<>();
-        this.delayMS = delayMS;
     }
 
-    public ArrayList<GameState.Coord> findValidSnakePosition() {
+    public synchronized ArrayList<GameState.Coord> findValidSnakePosition() {
         Random random = new Random();
         int maxAttempts = 1000;
         int minSnakeSize = 3;
@@ -92,6 +105,7 @@ public class GameField {
         Random random = new Random();
         List<GameState.Coord> newFood = getFoods();
         for (GameState.Coord body : snake.getBody()) {
+            if (body.equals(snake.getHead())) continue;
             if (random.nextInt(100) < 50) { // 50% to spawn apple
                 newFood.add(body);
             }

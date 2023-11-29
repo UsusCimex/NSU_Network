@@ -166,7 +166,6 @@ public class Snake {
 
         // Двигаем змею
         body.addFirst(newHead);
-        body.removeLast(); // Удаляем последний элемент из очереди, чтобы змея двигалась
         return true;
     }
 

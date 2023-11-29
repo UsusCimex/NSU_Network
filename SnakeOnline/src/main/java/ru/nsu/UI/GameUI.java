@@ -22,7 +22,7 @@ import ru.nsu.Controller;
 import ru.nsu.SnakeGame.GameField;
 import ru.nsu.SnakeGame.GameLogic;
 import ru.nsu.SnakeGame.Snake;
-import ru.nsu.SnakeServer;
+import ru.nsu.SnakeNet;
 import ru.nsu.SnakesProto.*;
 import ru.nsu.patterns.Observer;
 
@@ -40,7 +40,7 @@ public class GameUI extends Application implements Observer {
     private TableView<PlayerInfo> leaderboardTable;
     private TableView<ServerInfo> curGameInfo;
     private TableView<ServerInfo> serverList = new TableView<>();
-    private Map<String, Timer> serverTimers = new HashMap<>();
+    private final Map<String, Timer> serverTimers = new HashMap<>();
 
     private GameField gameField = null;
 
@@ -48,7 +48,7 @@ public class GameUI extends Application implements Observer {
 
     private Button createGameButton;
     private Button exitGameButton;
-    private Controller controller = new Controller(this);
+    private final Controller controller = new Controller(this);
 
     @Override
     public void start(Stage stage) {
@@ -119,7 +119,7 @@ public class GameUI extends Application implements Observer {
         TableColumn<ServerInfo, String> foodColumn = new TableColumn<>("Food");
         gameNameColumn.setCellValueFactory(new PropertyValueFactory<>("serverName"));
         areaSizeColumn.setCellValueFactory(new PropertyValueFactory<>("areaSize"));
-        foodColumn.setCellValueFactory(new PropertyValueFactory<>("food"));
+        foodColumn.setCellValueFactory(new PropertyValueFactory<>("foodCoefficientB"));
         curGameInfo.getColumns().addAll(gameNameColumn, areaSizeColumn, foodColumn);
         VBox curGameBox = new VBox(cGame, curGameInfo);
 
@@ -146,7 +146,7 @@ public class GameUI extends Application implements Observer {
         serverLeader.setCellValueFactory(new PropertyValueFactory<>("serverName"));
         serverOnline.setCellValueFactory(new PropertyValueFactory<>("online"));
         serverAreaSize.setCellValueFactory(new PropertyValueFactory<>("areaSize"));
-        serverFood.setCellValueFactory(new PropertyValueFactory<>("food"));
+        serverFood.setCellValueFactory(new PropertyValueFactory<>("foodCoefficientB"));
         serverList.getColumns().addAll(serverLeader, serverOnline, serverAreaSize, serverFood);
 
         serverList.setRowFactory(tv -> {
@@ -173,25 +173,29 @@ public class GameUI extends Application implements Observer {
         dialog.setContentText("Name:");
 
         Optional<String> result = dialog.showAndWait();
-        result.ifPresent(name -> joinGame(name, serverInfo));
+        result.ifPresent(name -> {
+            generateGameField(serverInfo);
+
+            try {
+                controller.startClient(name, serverInfo);
+
+                gameRunning = true;
+                updateButtonsState(); // Обновление состояния кнопок
+                updateCurGameInfo(serverInfo);
+            } catch (IOException e) {
+                System.err.println("Start client error");
+                e.printStackTrace();
+            }
+        });
     }
 
-    private void joinGame(String playerName, ServerInfo serverInfo) {
-        try {
-            String[] numbers = serverInfo.areaSizeProperty().get().split("[^0-9]+");
-            int width = Integer.parseInt(numbers[0]);
-            int height = Integer.parseInt(numbers[1]);
-            adjustCellSize(width, height);
+    private void generateGameField(ServerInfo serverInfo) {
+        String[] numbers = serverInfo.areaSizeProperty().get().split("[^0-9]+");
+        int width = Integer.parseInt(numbers[0]);
+        int height = Integer.parseInt(numbers[1]);
+        adjustCellSize(width, height);
 
-            gameField = new GameField(width, height, 0, serverInfo.foodProperty().get(), serverInfo.stateDelayMsProperty().get());
-
-            controller.startClient(playerName, serverInfo);
-            gameRunning = true;
-            updateButtonsState(); // Обновление состояния кнопок
-            updateCurGameInfo(serverInfo);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        gameField = new GameField(serverInfo);
     }
 
     private void adjustCellSize(int fieldWidth, int fieldHeight) {
@@ -215,7 +219,6 @@ public class GameUI extends Application implements Observer {
         if (gameField != null) clearGameGrid();
 
         controller.stopServer();
-        controller.stopClient();
 
         updateButtonsState();
     }
@@ -290,16 +293,27 @@ public class GameUI extends Application implements Observer {
 
             if (dataIsValid) {
                 // Создаём игру
-                GameField serverGameField = new GameField(fieldWidth, fieldHeight, foodCoefficientA, foodCoefficientB, gameSpeed);
-                startServer(gameName, serverGameField);
-                joinGame(playerName, new ServerInfo(gameName,
+                try {
+                    ServerInfo serverInfo = new ServerInfo(gameName,
                         0,
                         widthTextField.getText() + "x" + heightTextField.getText(),
+                        foodCoefficientA,
                         foodCoefficientB,
                         gameSpeed,
-                        controller.getServerIP(),
-                        SnakeServer.MULTICAST_PORT));
+                        Controller.getAddress("Wi-Fi"),
+                        SnakeNet.MULTICAST_PORT);
 
+                    generateGameField(serverInfo);
+
+                    controller.startServer(playerName, serverInfo);
+
+                    gameRunning = true;
+                    updateButtonsState(); // Обновление состояния кнопок
+                    updateCurGameInfo(serverInfo);
+                } catch (IOException e) {
+                    System.err.println("Server create error...");
+                    throw new RuntimeException(e);
+                }
                 // Закрываем форму создания игры
                 createGameStage.close();
             }
@@ -316,15 +330,6 @@ public class GameUI extends Application implements Observer {
         Scene scene = new Scene(layout);
         createGameStage.setScene(scene);
         createGameStage.show();
-    }
-
-    private void startServer(String gameName, GameField serverGameField) {
-        try {
-            controller.startServer(gameName, serverGameField);
-        } catch (IOException e) {
-            System.err.println("Start server exception!");
-            throw new RuntimeException(e);
-        }
     }
 
     private void handleKeyPress(KeyCode code) {
@@ -437,6 +442,7 @@ public class GameUI extends Application implements Observer {
                         gameName,
                         gameAnnouncement.getPlayers().getPlayersCount(),
                         String.format("%dx%d", gameAnnouncement.getConfig().getWidth(), gameAnnouncement.getConfig().getHeight()),
+                        0,
                         gameAnnouncement.getConfig().getFoodStatic(),
                         gameAnnouncement.getConfig().getStateDelayMs(),
                         address.getHostAddress(),
@@ -453,7 +459,8 @@ public class GameUI extends Application implements Observer {
             server.serverNameProperty().set(gameAnnouncement.getGameName());
             server.onlineProperty().set((gameAnnouncement.getPlayers().getPlayersCount()));
             server.areaSizeProperty().set(String.format("%dx%d", gameAnnouncement.getConfig().getWidth(), gameAnnouncement.getConfig().getHeight()));
-            server.foodProperty().set(gameAnnouncement.getConfig().getFoodStatic());
+            server.foodCoefficientAProperty().set(0);
+            server.foodCoefficientBProperty().set(gameAnnouncement.getConfig().getFoodStatic());
         });
     }
 

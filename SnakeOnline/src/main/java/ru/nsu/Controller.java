@@ -1,7 +1,6 @@
 package ru.nsu;
 
 import javafx.scene.input.KeyCode;
-import ru.nsu.SnakeGame.GameField;
 import ru.nsu.UI.ServerInfo;
 import ru.nsu.patterns.Observer;
 
@@ -15,8 +14,7 @@ public class Controller {
     private final Observer UI;
     private MulticastSocket multicastSocket = null;
 
-    private SnakeServer server = null;
-    private SnakeClient client = null;
+    private SnakeNet snakeNet = null;
 
     Thread serverListListener;
 
@@ -64,16 +62,15 @@ public class Controller {
     public void close() {
         if (multicastSocket != null) multicastSocket.close();
         if (serverListListener != null) serverListListener.interrupt();
-        stopServer();
-        stopClient();
+        if (snakeNet != null) snakeNet.stop();
     }
 
     public void start() {
         // Создадим поток, который будет получать ANNOUNCEMENT сообщения
         serverListListener = new Thread(() -> {
             try {
-                multicastSocket = new MulticastSocket(SnakeServer.MULTICAST_PORT);
-                InetAddress group = InetAddress.getByName(SnakeServer.MULTICAST_ADDRESS);
+                multicastSocket = new MulticastSocket(SnakeNet.MULTICAST_PORT);
+                InetAddress group = InetAddress.getByName(SnakeNet.MULTICAST_ADDRESS);
 
                 // Находим подходящий сетевой интерфейс
                 NetworkInterface networkInterface = findNetworkInterface("Wi-Fi");
@@ -82,7 +79,7 @@ public class Controller {
                     return;
                 }
 
-                SocketAddress socketAddress = new InetSocketAddress(group, SnakeServer.MULTICAST_PORT);
+                SocketAddress socketAddress = new InetSocketAddress(group, SnakeNet.MULTICAST_PORT);
                 multicastSocket.joinGroup(socketAddress, networkInterface);
 
                 while (!serverListListener.isInterrupted()) {
@@ -111,38 +108,28 @@ public class Controller {
     }
 
     public void startClient(String playerName, ServerInfo serverInfo) throws IOException {
-        client = new SnakeClient(serverInfo, UI, multicastSocket);
-        client.start(playerName);
+        snakeNet = new SnakeNet(serverInfo, UI);
+        snakeNet.startAsClient(playerName, InetAddress.getByName(serverInfo.serverIPProperty().get()), serverInfo.serverPortProperty().get());
     }
 
     public void stopServer() {
-        if (server != null) {
-            server.stop();
-            server = null;
-        }
-    }
-    public void stopClient() {
-        if (client != null) {
-            client.stop();
-            client = null;
+        if (snakeNet != null) {
+            snakeNet.stop();
+            snakeNet = null;
         }
     }
 
-    public void startServer(String gameName, GameField serverGameField) throws IOException {
-        server = new SnakeServer(gameName, serverGameField, multicastSocket);
-        server.start();
+    public void startServer(String playerName, ServerInfo serverInfo) throws IOException {
+        snakeNet = new SnakeNet(serverInfo, UI);
+        snakeNet.startAsServer(playerName, InetAddress.getByName(serverInfo.serverIPProperty().get()), serverInfo.serverPortProperty().get());
     }
 
     public void sendSteerMsg(KeyCode code) throws IOException {
         switch (code) {
-            case A, LEFT  -> client.sendSteer(SnakesProto.Direction.LEFT);
-            case S, DOWN  -> client.sendSteer(SnakesProto.Direction.DOWN);
-            case D, RIGHT -> client.sendSteer(SnakesProto.Direction.RIGHT);
-            case W, UP    -> client.sendSteer(SnakesProto.Direction.UP);
+            case A, LEFT -> snakeNet.sendSteer(SnakesProto.Direction.LEFT);
+            case S, DOWN -> snakeNet.sendSteer(SnakesProto.Direction.DOWN);
+            case D, RIGHT -> snakeNet.sendSteer(SnakesProto.Direction.RIGHT);
+            case W, UP -> snakeNet.sendSteer(SnakesProto.Direction.UP);
         }
-    }
-
-    public String getServerIP() {
-        return server.getAddress();
     }
 }

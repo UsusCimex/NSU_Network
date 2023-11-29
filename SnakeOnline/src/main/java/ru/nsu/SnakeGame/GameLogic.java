@@ -37,22 +37,22 @@ public class GameLogic {
         }
 
         for (Snake snake : gameField.getSnakes()) {
-
             if (!snake.move(gameField)) {
                 gameField.removeSnake(snake);
-                continue;
             }
-
             // Проверяем столкновения с едой
             if (gameField.getFoods().contains(snake.getHead())) {
                 snake.addScore(1);
-                snake.grow();
 
                 List<GameState.Coord> temp = gameField.getFoods();
                 temp.remove(snake.getHead());
                 gameField.setFoods(temp);
+            } else {
+                snake.getBody().removeLast(); // Удаляем последний элемент из очереди, чтобы змея двигалась
             }
+        }
 
+        for (Snake snake : gameField.getSnakes()) {
             for (Snake anotherSnake : gameField.getSnakes()) {
                 if (anotherSnake.equals(snake)) continue;
                 if (anotherSnake.getBody().contains(snake.getHead())) {
