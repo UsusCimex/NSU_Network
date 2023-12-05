@@ -519,15 +519,20 @@ public class SnakeNet {
         }
 
         if (disconnectedPlayerId == masterId) {
-            System.err.println("Master disconnected, updated deputyId to masterId.");
-            masterId = deputyId;
+            GamePlayer oldPlayer = players.get(playerId);
+            GamePlayer player = GamePlayer.newBuilder(oldPlayer).setRole(NodeRole.MASTER).build();
+            players.put(player.getId(), player);
+            if (deputyId == player.getId()) deputyId = -1;
+            GamePlayer oldMaster = players.get(masterId);
+            GamePlayer master = GamePlayer.newBuilder(oldMaster).setRole(NodeRole.NORMAL).build();
+            players.put(master.getId(), master);
+            masterId = player.getId();
             try {
-                serverAddress = InetAddress.getByName(players.get(masterId).getIpAddress());
+                this.serverAddress = InetAddress.getByName(player.getIpAddress());
             } catch (UnknownHostException e) {
                 System.err.println("UnknownHostException...");
             }
-            serverPort = players.get(masterId).getPort();
-            deputyId = -1;
+            this.serverPort = player.getPort();
         } else if (disconnectedPlayerId == deputyId) {
             deputyId = -1;
         }

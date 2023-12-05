@@ -2,6 +2,7 @@ package ru.nsu.SnakeGame;
 
 import ru.nsu.SnakesProto.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class GameLogic {
@@ -13,7 +14,10 @@ public class GameLogic {
 
     public static void editGameFieldFromState(GameField gameField, GameMessage.StateMsg stateMsg) {
         if (gameField == null || stateMsg == null) return;
-        gameField.setFoods(stateMsg.getState().getFoodsList());
+        gameField.getFoods().clear();
+        for (GameState.Coord apple : stateMsg.getState().getFoodsList()) {
+            gameField.getFoods().add(apple);
+        }
         for (Snake snake : gameField.getSnakes()) {
             snake.clearUpdated();
         }
@@ -32,7 +36,12 @@ public class GameLogic {
             int appleNeeded = gameField.amountOfFoodNeeded(gameField.getSnakes().size()) - gameField.getFoods().size();
             System.err.println("[GameLogic] Needed " + appleNeeded + " apples");
             for (int i = 0; i < appleNeeded; ++i) {
-                placeFood();
+                if (gameField.hasPlace()) {
+                    placeFood();
+                } else {
+                    System.err.println("[GameLogic] Place not found...!");
+                    break;
+                }
             }
         }
 
@@ -44,9 +53,7 @@ public class GameLogic {
             if (gameField.getFoods().contains(snake.getHead())) {
                 snake.addScore(1);
 
-                List<GameState.Coord> temp = gameField.getFoods();
-                temp.remove(snake.getHead());
-                gameField.setFoods(temp);
+                gameField.getFoods().remove(snake.getHead());
             } else {
                 snake.getBody().removeLast(); // Удаляем последний элемент из очереди, чтобы змея двигалась
             }
@@ -84,9 +91,7 @@ public class GameLogic {
                 .build();
         // Убедимся, что еда не появится в занятой клетке
         if (!gameField.isCellOccupied(foodPosition)) {
-            List<GameState.Coord> temp = gameField.getFoods();
-            temp.add(foodPosition);
-            gameField.setFoods(temp);
+            gameField.getFoods().add(foodPosition);
         } else {
             placeFood();
         }

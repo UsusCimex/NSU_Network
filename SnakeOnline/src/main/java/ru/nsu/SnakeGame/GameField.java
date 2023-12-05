@@ -14,7 +14,7 @@ public class GameField {
     private final int foodCoefficientB;
     private final int delayMS;
     private List<Snake> snakes;
-    private List<GameState.Coord> foods;
+    private ArrayList<GameState.Coord> foods;
     public GameField(ServerInfo serverInfo) {
         String[] numbers = serverInfo.areaSizeProperty().get().split("[^0-9]+");
         this.width = Integer.parseInt(numbers[0]);
@@ -98,19 +98,17 @@ public class GameField {
         addSnake(snake);
         snake.setUpdated();
     }
-    public synchronized void addSnake(Snake snake) {
+    public void addSnake(Snake snake) {
         snakes.add(snake);
     }
     public synchronized void removeSnake(Snake snake) {
         Random random = new Random();
-        List<GameState.Coord> newFood = getFoods();
         for (GameState.Coord body : snake.getBody()) {
             if (body.equals(snake.getHead())) continue;
             if (random.nextInt(100) < 50) { // 50% to spawn apple
-                newFood.add(body);
+                foods.add(body);
             }
         }
-        setFoods(newFood);
         snakes.remove(snake);
     }
     public int amountOfFoodNeeded(int playerCount) {
@@ -125,16 +123,19 @@ public class GameField {
     public List<Snake> getSnakes() {
         return new ArrayList<>(snakes);
     }
-    public List<GameState.Coord> getFoods() {
-        return new ArrayList<>(foods);
-    }
-    public synchronized void setFoods(List<GameState.Coord> foods) {
-        this.foods = foods;
-    }
-    public synchronized void setSnakes(List<Snake> snakes) {
-        this.snakes = snakes;
+    public ArrayList<GameState.Coord> getFoods() {
+        return foods;
     }
     public int getDelayMS() {
         return delayMS;
+    }
+
+    public boolean hasPlace() {
+        int foodSize = foods.size();
+        int snakeSize = 0;
+        for (Snake snake : getSnakes()) {
+            snakeSize += snake.getBody().size();
+        }
+        return (foodSize + snakeSize) < (width * height - 1);
     }
 }
