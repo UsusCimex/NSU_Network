@@ -301,7 +301,7 @@ public class GameUI extends Application implements Observer {
                         foodCoefficientB,
                         gameSpeed,
                         Controller.getAddress("Wi-Fi"),
-                        SnakeNet.MULTICAST_PORT);
+                        21212);
 
                     generateGameField(serverInfo);
 
@@ -428,10 +428,27 @@ public class GameUI extends Application implements Observer {
             String gameName = gameAnnouncement.getGameName();
             boolean exists = false;
 
+            // Находим IP и порт мастера
+            String masterIp = null;
+            int masterPort = -1;
+            for (GamePlayer player : gameAnnouncement.getPlayers().getPlayersList()) {
+                if (player.getRole() == NodeRole.MASTER) {
+                    masterIp = player.getIpAddress();
+                    masterPort = player.getPort();
+                    break;
+                }
+            }
+
+            if (masterIp == null || masterPort == -1) {
+                // Если мастер не найден, используем адрес и порт отправителя
+                masterIp = address.getHostAddress();
+                masterPort = port;
+            }
+
             for (ServerInfo server : serverList.getItems()) {
                 if (server.serverNameProperty().get().equals(gameName)) {
                     exists = true;
-                    updateServerInfo(server, gameAnnouncement); // Обновляем информацию о сервере
+                    updateServerInfo(server, gameAnnouncement, masterIp, masterPort); // Обновляем информацию о сервере
                     resetTimerForServer(gameName); // Сбрасываем таймер
                     break;
                 }
@@ -445,8 +462,8 @@ public class GameUI extends Application implements Observer {
                         0,
                         gameAnnouncement.getConfig().getFoodStatic(),
                         gameAnnouncement.getConfig().getStateDelayMs(),
-                        address.getHostAddress(),
-                        port
+                        masterIp,
+                        masterPort
                 );
                 serverList.getItems().add(newServer);
                 startTimerForServer(gameName); // Запускаем таймер для нового сервера
@@ -454,15 +471,18 @@ public class GameUI extends Application implements Observer {
         }
     }
 
-    private void updateServerInfo(ServerInfo server, GameAnnouncement gameAnnouncement) {
+    private void updateServerInfo(ServerInfo server, GameAnnouncement gameAnnouncement, String masterIp, int masterPort) {
         Platform.runLater(() -> {
             server.serverNameProperty().set(gameAnnouncement.getGameName());
             server.onlineProperty().set((gameAnnouncement.getPlayers().getPlayersCount()));
             server.areaSizeProperty().set(String.format("%dx%d", gameAnnouncement.getConfig().getWidth(), gameAnnouncement.getConfig().getHeight()));
             server.foodCoefficientAProperty().set(0);
             server.foodCoefficientBProperty().set(gameAnnouncement.getConfig().getFoodStatic());
+            server.serverIPProperty().set(masterIp);
+            server.serverPortProperty().set(masterPort);
         });
     }
+
 
     private void resetTimerForServer(String gameName) {
         Timer existingTimer = serverTimers.get(gameName);
