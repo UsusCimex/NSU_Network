@@ -17,9 +17,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class ProxyServer {
-    private static final String USERNAME = "login";
-    private static final String PASSWORD = "password";
-    private static final boolean authorizationFlag = false;
     private static final Map<SocketChannel, SocketChannel> sockets = new HashMap<>();
     private static Selector selector;
     public static void main(String[] args) throws IOException {
@@ -138,35 +135,18 @@ public class ProxyServer {
         // Отправляем ответ клиенту, говоря ему код аутенфикации
         ByteBuffer responseBuffer = ByteBuffer.allocate(2);
         responseBuffer.put((byte) 5); // Версия SOCKS5
-        if (authorizationFlag) { // Метод аутентификации: 0 - не требуется, 1 - GSSAPI, 2 - USERNAME/PASSWORD
-            responseBuffer.put((byte) 2);
-        }
-        else {
-            responseBuffer.put((byte) 0);
-        }
+
+        responseBuffer.put((byte) 0);
         responseBuffer.flip();
         clientChannel.write(responseBuffer);
 
-        if (authorizationFlag) {
-            if (!authenticate(clientChannel)) {
-                System.err.println(clientChannel.getRemoteAddress() + " enter wrong LOGIN/PASSWORD");
-                responseBuffer = ByteBuffer.allocate(2);
-                responseBuffer.put((byte) 5);
-                responseBuffer.put((byte) 1);
-                responseBuffer.flip();
-                clientChannel.write(responseBuffer);
-                clientChannel.close();
-                throw new IOException("Session closed");
-            } else {
-                System.err.println(clientChannel.getRemoteAddress() + " entered the correct password");
-                responseBuffer = ByteBuffer.allocate(2);
-                responseBuffer.put((byte) 5);
-                responseBuffer.put((byte) 0);
-                responseBuffer.flip();
-                clientChannel.write(responseBuffer);
-                clientChannel.close();
-            }
-        }
+        System.err.println(clientChannel.getRemoteAddress() + " entered the correct password");
+        responseBuffer = ByteBuffer.allocate(2);
+        responseBuffer.put((byte) 5);
+        responseBuffer.put((byte) 0);
+        responseBuffer.flip();
+        clientChannel.write(responseBuffer);
+        clientChannel.close();
 
         buffer = ByteBuffer.allocate(256);
         // Считываем команды от клиента
@@ -259,41 +239,8 @@ public class ProxyServer {
 
         throw new IOException("No IPv4 address found for domain: " + domain);
     }
-    private static boolean authenticate(SocketChannel clientChannel) throws IOException {
-        // Читаем данные аутентификации
-        ByteBuffer authData = ByteBuffer.allocate(513); // Максимальный размер логина и пароля
-        int authBytesRead = clientChannel.read(authData);
-
-        if (authBytesRead <= 0) {
-            // Некорректные данные аутентификации
-            System.err.println("AUTHENTICATE read error...");
-            return false;
-        }
-
-        authData.flip();
-        byte authVersion = authData.get();
-        byte usernameLength = authData.get();
-        byte[] usernameBytes = new byte[usernameLength];
-        authData.get(usernameBytes);
-        String username = new String(usernameBytes, StandardCharsets.UTF_8);
-        byte passwordLength = authData.get();
-        byte[] passwordBytes = new byte[passwordLength];
-        authData.get(passwordBytes);
-        String password = new String(passwordBytes, StandardCharsets.UTF_8);
-
-        System.err.println(username);
-        System.err.println(password);
-
-        if (authVersion != 0x01 || !username.equals(USERNAME) || !password.equals(PASSWORD)) {
-            // Некорректные логин и/или пароль
-            return false;
-        }
-
-        // Аутентификация успешна
-        return true;
-    }
     private static void transferData(SocketChannel clientChannel, SocketChannel remoteChannel) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(14336);
+        ByteBuffer buffer = ByteBuffer.allocate(4096);
 
         int bytesRead = clientChannel.read(buffer);
         if (bytesRead == -1) {
@@ -313,5 +260,6 @@ public class ProxyServer {
             sockets.remove(remoteChannel);
             return;
         }
+        buffer.flip();
     }
 }
