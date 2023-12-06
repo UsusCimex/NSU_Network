@@ -135,18 +135,9 @@ public class ProxyServer {
         // Отправляем ответ клиенту, говоря ему код аутенфикации
         ByteBuffer responseBuffer = ByteBuffer.allocate(2);
         responseBuffer.put((byte) 5); // Версия SOCKS5
-
         responseBuffer.put((byte) 0);
         responseBuffer.flip();
         clientChannel.write(responseBuffer);
-
-        System.err.println(clientChannel.getRemoteAddress() + " entered the correct password");
-        responseBuffer = ByteBuffer.allocate(2);
-        responseBuffer.put((byte) 5);
-        responseBuffer.put((byte) 0);
-        responseBuffer.flip();
-        clientChannel.write(responseBuffer);
-        clientChannel.close();
 
         buffer = ByteBuffer.allocate(256);
         // Считываем команды от клиента
@@ -240,7 +231,7 @@ public class ProxyServer {
         throw new IOException("No IPv4 address found for domain: " + domain);
     }
     private static void transferData(SocketChannel clientChannel, SocketChannel remoteChannel) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(4096);
+        ByteBuffer buffer = ByteBuffer.allocate(14336);
 
         int bytesRead = clientChannel.read(buffer);
         if (bytesRead == -1) {
