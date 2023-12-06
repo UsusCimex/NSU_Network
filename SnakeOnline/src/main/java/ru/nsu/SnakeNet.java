@@ -285,7 +285,7 @@ public class SnakeNet {
                 long playerMsgSeq = message.getMsgSeq();
 
                 if (playerMsgSeq > lastMsgSeqReceived.getOrDefault(playerId, -1L)) {
-                    lastMsgSeqReceived.put(playerId, playerMsgSeq);
+                    if (playerId != -1) lastMsgSeqReceived.put(playerId, playerMsgSeq);
                     switch (message.getTypeCase()) {
                         case PING  -> handlePing(message, address, port);
                         case STEER -> handleSteer(message, address, port);
@@ -344,8 +344,10 @@ public class SnakeNet {
 
     private void handleJoin(GameMessage message, InetAddress address, int port) throws IOException {
         GameMessage.JoinMsg join = message.getJoin();
+        System.err.println("Try to connect new player! " + canPlayerJoin());
         if (canPlayerJoin()) {
             int playerId = addNewPlayer(join.getPlayerName(), address, port, join.getRequestedRole());
+            System.err.println("Player(" + playerId + ") can join to the game!");
             ArrayList<GameState.Coord> initialPosition = snakeGame.getGameField().findValidSnakePosition();
             Snake newSnake = new Snake(initialPosition, playerId);
             snakeGame.addSnake(newSnake);
@@ -447,6 +449,10 @@ public class SnakeNet {
         NodeRole newRole = roleChangeMsg.getReceiverRole();
         this.nodeRole = newRole;
         if (newRole == NodeRole.MASTER) {
+            currentMaxId = players.values().stream()
+                    .map(GamePlayer::getId)
+                    .max(Integer::compare)
+                    .get();
             GamePlayer oldPlayer = players.get(message.getReceiverId());
             GamePlayer player = GamePlayer.newBuilder(oldPlayer).setRole(NodeRole.MASTER).build();
             players.put(player.getId(), player);

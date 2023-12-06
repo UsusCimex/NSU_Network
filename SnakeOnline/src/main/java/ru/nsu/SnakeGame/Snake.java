@@ -206,6 +206,9 @@ public class Snake {
     public Direction getHeadDirection() {
         return direction;
     }
+    public void setHeadDirection(Direction direction) {
+        this.direction = direction;
+    }
     public GameState.Snake.SnakeState getState() {
         return state;
     }

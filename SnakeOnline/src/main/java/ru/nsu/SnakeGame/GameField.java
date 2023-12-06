@@ -91,6 +91,7 @@ public class GameField {
         for (Snake snk : snakes) {
             if (snk.getPlayerID() == snake.getPlayerID()) {
                 snk.setBody(snake.getBody());
+                snk.setHeadDirection(snake.getHeadDirection());
                 snk.setUpdated();
                 return;
             }

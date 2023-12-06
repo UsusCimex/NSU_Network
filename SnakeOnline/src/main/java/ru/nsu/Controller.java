@@ -126,10 +126,10 @@ public class Controller {
 
     public void sendSteerMsg(KeyCode code) throws IOException {
         switch (code) {
-            case A, LEFT -> snakeNet.sendSteer(SnakesProto.Direction.LEFT);
-            case S, DOWN -> snakeNet.sendSteer(SnakesProto.Direction.DOWN);
-            case D, RIGHT -> snakeNet.sendSteer(SnakesProto.Direction.RIGHT);
-            case W, UP -> snakeNet.sendSteer(SnakesProto.Direction.UP);
+            case A, LEFT, KP_LEFT -> snakeNet.sendSteer(SnakesProto.Direction.LEFT);
+            case S, DOWN, KP_DOWN -> snakeNet.sendSteer(SnakesProto.Direction.DOWN);
+            case D, RIGHT, KP_RIGHT -> snakeNet.sendSteer(SnakesProto.Direction.RIGHT);
+            case W, UP, KP_UP -> snakeNet.sendSteer(SnakesProto.Direction.UP);
         }
     }
 }
