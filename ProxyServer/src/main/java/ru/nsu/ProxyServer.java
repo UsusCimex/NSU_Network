@@ -52,6 +52,7 @@ public class ProxyServer {
                             readConnection(key);
                         }
                     } catch (Exception e) {
+                        System.err.println(e.getMessage());
                         SocketChannel sc = (SocketChannel) key.channel();
                         if (sc != null) {
                             SocketChannel rc = connections.get(sc).getRemoteChannel();
@@ -120,9 +121,7 @@ public class ProxyServer {
         // Читаем данные от клиента в буфер.
         int bytesRead = clientChannel.read(buffer);
         if (bytesRead == -1) {
-            // Если клиент закрыл соединение, закрываем и его соединение и завершаем обработку.
-            clientChannel.close();
-            throw new IOException("Session closed");
+            throw new IOException("Authorization failed! (first read)");
         }
 
         // Парсим SOCKS5 протокол.
@@ -132,9 +131,7 @@ public class ProxyServer {
 
         // Проверяем версию и количество методов аутентификации.
         if (version != 5 || authMethodsCount == 0) {
-            // Версия или количество методов не поддерживается.
-            clientChannel.close();
-            throw new IOException("Session closed");
+            throw new IOException("Authorization failed! (Version or authmethod exception)");
         }
 
         // Считываем список методов аутентификации, но мы не будем их анализировать, так как будем использовать анонимный доступ.
@@ -156,8 +153,7 @@ public class ProxyServer {
         // Считываем команды от клиента
         int bytesRead = clientChannel.read(buffer);
         if (bytesRead == -1) {
-            clientChannel.close();
-            throw new IOException("Session closed");
+            throw new IOException("Connection failed! (first read)");
         }
         buffer.flip();
 
@@ -165,6 +161,10 @@ public class ProxyServer {
         byte cmd = buffer.get(); // Команда 1 - CONNECT, 2 - BIND, 3 - UDP ASSOCIATE
         byte reserved = buffer.get(); // Зарезервировано, должно быть 0
         byte addressType = buffer.get(); // Тип адреса 1 - IPv4, 3 - IPv6, 2 - доменное имя
+
+        if (ver != 5 || cmd != 1) {
+            throw new IOException("Connection failed! (version or command exception)");
+        }
 
         InetAddress destinationAddress;
         // В зависимости от типа адреса, вы можете обработать соответствующий запрос.
@@ -175,9 +175,7 @@ public class ProxyServer {
                 buffer.get(ipAddress); // IP адрес
                 destinationAddress = InetAddress.getByAddress(ipAddress);
             } else {
-                // Обработка недостаточного количества данных
-                clientChannel.close();
-                throw new IOException("Session closed");
+                throw new IOException("Connection failed! (need 4 bytes to ipv4)");
             }
         } else if (addressType == 3) {
             // Доменное имя
@@ -190,20 +188,15 @@ public class ProxyServer {
                     System.out.println("Client(" + clientChannel.getRemoteAddress() + ") is trying to reach a DNS address: " + domain);
                     destinationAddress = resolveDomain(domain);
                 } else {
-                    // Обработка недостаточного количества данных
-                    clientChannel.close();
-                    throw new IOException("Session closed");
+                    throw new IOException("Connection failed! (domain >= domainLength)");
                 }
             } else {
-                // Обработка недостаточного количества данных
-                clientChannel.close();
-                throw new IOException("Session closed");
+                throw new IOException("Connection failed! (no information about domain)");
             }
         } else {
             // Неподдерживаемый тип адреса, 4 - IPv6
             System.out.println("Client(" + clientChannel.getRemoteAddress() + ") have unsupported address type: " + addressType);
-            clientChannel.close();
-            throw new IOException("Session closed");
+            throw new IOException("Connection failed! (unsupported address type)");
         }
 
         int destinationPort = buffer.getShort(); // Порт
@@ -235,23 +228,13 @@ public class ProxyServer {
 
         int bytesRead = clientChannel.read(buffer);
         if (bytesRead == -1) {
-            System.out.println("Client disconnected");
-            clientChannel.close();
-            remoteChannel.close();
-            connections.remove(clientChannel);
-            connections.remove(remoteChannel);
-            return;
+            throw new IOException("Transfer from client failed");
         }
         buffer.flip();
 
         int bytesWrite = remoteChannel.write(buffer);
         if (bytesWrite == -1) {
-            System.out.println("Error writing to remote channel");
-            clientChannel.close();
-            remoteChannel.close();
-            connections.remove(clientChannel);
-            connections.remove(remoteChannel);
-            return;
+            throw new IOException("Transfer to remote failed");
         }
         buffer.flip();
     }
