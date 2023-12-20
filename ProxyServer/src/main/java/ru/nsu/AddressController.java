@@ -1,5 +1,11 @@
 package ru.nsu;
 
+import org.xbill.DNS.ARecord;
+import org.xbill.DNS.Lookup;
+import org.xbill.DNS.Record;
+import org.xbill.DNS.Type;
+
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
@@ -47,5 +53,22 @@ public class AddressController {
             e.printStackTrace();
         }
         return null;
+    }
+    static InetAddress resolveDomain(String domain) throws IOException {
+        Lookup lookup = new Lookup(domain, Type.A);
+        Record[] records = lookup.run();
+
+        if (records == null || records.length == 0) {
+            throw new IOException("Failed to resolve domain: " + domain);
+        }
+
+        for (Record record : records) {
+            if (record instanceof ARecord aRecord) {
+                String ipAddress = aRecord.getAddress().getHostAddress();
+                return InetAddress.getByName(ipAddress);
+            }
+        }
+
+        throw new IOException("No IPv4 address found for domain: " + domain);
     }
 }

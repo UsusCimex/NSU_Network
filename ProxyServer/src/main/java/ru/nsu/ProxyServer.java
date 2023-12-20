@@ -1,10 +1,5 @@
 package ru.nsu;
 
-import org.xbill.DNS.ARecord;
-import org.xbill.DNS.Lookup;
-import org.xbill.DNS.Record;
-import org.xbill.DNS.Type;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -16,98 +11,112 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-public class ProxyServer {
-    private static final Map<SocketChannel, SocketChannel> sockets = new HashMap<>();
-    private static Selector selector;
-    public static void main(String[] args) throws IOException {
-        int proxyPort = 1080; // Порт прокси-сервера default 1080
-        if (args.length != 0) proxyPort = Integer.parseInt(args[0]);
+import static ru.nsu.AddressController.resolveDomain;
 
+public class ProxyServer {
+    private static final Map<SocketChannel, ConnectionInfo> connections = new HashMap<>();
+    private static Selector selector;
+    private final InetSocketAddress address;
+    public ProxyServer(int port) throws IOException {
         ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
-        InetSocketAddress address = new InetSocketAddress(Objects.requireNonNull(AddressController.getAddress("Wi-Fi")), proxyPort);
+        this.address = new InetSocketAddress(Objects.requireNonNull(AddressController.getAddress("Wi-Fi")), port);
         serverSocketChannel.socket().bind(address);
         serverSocketChannel.configureBlocking(false);
 
         selector = Selector.open();
         serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
-
+    }
+    public void start() {
         System.out.println("The proxy server is running on address " + address);
+        try {
+            while (true) {
+                int readyChannels = selector.select();
+                if (readyChannels == 0) continue;
 
-        // Основной цикл сервера
-        while (true) {
-            int readyChannels = selector.select();
-            if (readyChannels == 0) continue;
+                Iterator<SelectionKey> keyIterator = selector.selectedKeys().iterator();
 
-            Iterator<SelectionKey> keyIterator = selector.selectedKeys().iterator();
+                while (keyIterator.hasNext()) {
+                    SelectionKey key = keyIterator.next();
+                    keyIterator.remove();
 
-            while (keyIterator.hasNext()) {
-                SelectionKey key = keyIterator.next();
-                keyIterator.remove();
-
-                try {
-                    if (!key.isValid()) {
-                        // Проверяем, что ключ валиден
-                        continue;
-                    }
-
-                    if (key.isAcceptable()) {
-                        // Принимаем входящее соединение и запускаем обработку в отдельном потоке
-                        acceptConnection(key);
-                    } else if (key.isReadable()) {
-                        // Транслируем соединение между remoteSocket и ClientSocket
-                        readConnection(key);
-                    }
-                } catch (Exception e) {
-                    if (key.channel() instanceof ServerSocketChannel) {
-                        continue;
-                    }
-                    SocketChannel sc = (SocketChannel) key.channel();
-                    if (sc != null) {
-                        SocketChannel rc = sockets.get(sc);
-                        sc.close();
-                        sockets.remove(sc);
-                        if (rc != null) {
-                            rc.close();
-                            sockets.remove(rc);
+                    try {
+                        if (!key.isValid()) {
+                            continue;
                         }
+
+                        if (key.isAcceptable()) {
+                            // Принимаем входящее соединение и запускаем обработку в отдельном потоке
+                            acceptConnection(key);
+                        } else if (key.isReadable()) {
+                            // Транслируем соединение между remoteSocket и ClientSocket
+                            readConnection(key);
+                        }
+                    } catch (Exception e) {
+                        SocketChannel sc = (SocketChannel) key.channel();
+                        if (sc != null) {
+                            SocketChannel rc = connections.get(sc).getRemoteChannel();
+                            sc.close();
+                            connections.remove(sc);
+                            if (rc != null) {
+                                rc.close();
+                                connections.remove(rc);
+                            }
+                        }
+                        key.cancel();
                     }
-                    key.cancel();
                 }
             }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
+    public static void main(String[] args) throws IOException {
+        int port = 1080; // Порт прокси-сервера default 1080
+        if (args.length != 0) port = Integer.parseInt(args[0]);
+        ProxyServer proxy = new ProxyServer(port);
+        proxy.start();
+    }
 
-    private static void acceptConnection(SelectionKey key) throws IOException {
+    private void acceptConnection(SelectionKey key) throws IOException {
         ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
         SocketChannel clientChannel = serverChannel.accept();
         if (clientChannel != null) {
             System.out.println("A new connection to the client has been accepted: " + clientChannel.getRemoteAddress());
-            clientChannel.configureBlocking(true);
-
-            SocketChannel remoteChannel = handleSocksRequest(clientChannel);
-
             clientChannel.configureBlocking(false);
-            remoteChannel.configureBlocking(false);
 
+            ConnectionInfo connectionInfo = new ConnectionInfo(clientChannel);
+            connectionInfo.setState(ConnectionInfo.State.SOCKS_AUTHORIZATION);
+
+            connections.put(clientChannel, connectionInfo);
             clientChannel.register(selector, SelectionKey.OP_READ);
-            remoteChannel.register(selector, SelectionKey.OP_READ);
-            sockets.put(clientChannel, remoteChannel);
-            sockets.put(remoteChannel, clientChannel);
         }
     }
-    private static void readConnection(SelectionKey key) throws IOException {
+    private void readConnection(SelectionKey key) throws IOException {
         SocketChannel clientChannel = (SocketChannel) key.channel();
-        SocketChannel remoteChannel = sockets.get(clientChannel);
-        if (remoteChannel == null) {
-            clientChannel.close();
-            return;
+        ConnectionInfo connectionInfo = connections.get(clientChannel);
+        if (connectionInfo != null) {
+            switch (connectionInfo.getState()) {
+                case INITIAL:
+                    break;
+                case SOCKS_AUTHORIZATION:
+                    handleSocksAuthorization(connectionInfo);
+                    connectionInfo.setState(ConnectionInfo.State.SOCKS_CONNECTION);
+                    break;
+                case SOCKS_CONNECTION:
+                    handleSocksConnection(connectionInfo);
+                    connectionInfo.setState(ConnectionInfo.State.DATA_TRANSFER);
+                    connections.put(connectionInfo.getRemoteChannel(), new ConnectionInfo(connectionInfo));
+                    break;
+                case DATA_TRANSFER:
+                    transferData(connectionInfo);
+                    break;
+            }
         }
-
-        transferData(clientChannel, remoteChannel);
     }
-    private static SocketChannel handleSocksRequest(SocketChannel clientChannel) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(256);
 
+    private void handleSocksAuthorization(ConnectionInfo connectionInfo) throws IOException {
+        SocketChannel clientChannel = connectionInfo.getClientChannel();
+        ByteBuffer buffer = ByteBuffer.allocate(256);
         // Читаем данные от клиента в буфер.
         int bytesRead = clientChannel.read(buffer);
         if (bytesRead == -1) {
@@ -138,10 +147,14 @@ public class ProxyServer {
         responseBuffer.put((byte) 0);
         responseBuffer.flip();
         clientChannel.write(responseBuffer);
+    }
 
-        buffer = ByteBuffer.allocate(256);
+    private void handleSocksConnection(ConnectionInfo connectionInfo) throws IOException {
+        SocketChannel clientChannel = connectionInfo.getClientChannel();
+        ByteBuffer buffer = ByteBuffer.allocate(256);
+
         // Считываем команды от клиента
-        bytesRead = clientChannel.read(buffer);
+        int bytesRead = clientChannel.read(buffer);
         if (bytesRead == -1) {
             clientChannel.close();
             throw new IOException("Session closed");
@@ -199,9 +212,12 @@ public class ProxyServer {
         // Устанавливаем соединение с удаленным сервером
         SocketChannel remoteChannel = SocketChannel.open();
         remoteChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
+        remoteChannel.configureBlocking(false);
+        remoteChannel.register(selector, SelectionKey.OP_READ);
+        connectionInfo.setRemoteChannel(remoteChannel);
 
         // Отправляем ответ клиенту
-        responseBuffer = ByteBuffer.allocate(10); //IPv4 - 10 bytes, IPv6 - 22 bytes
+        ByteBuffer responseBuffer = ByteBuffer.allocate(10); //IPv4 - 10 bytes, IPv6 - 22 bytes
         responseBuffer.put((byte) 5); // Версия SOCKS5
         responseBuffer.put((byte) 0); // 0 - Успех, 1 - ошибка SOCKS сервера
         responseBuffer.put((byte) 0); // Зарезервировано
@@ -210,45 +226,31 @@ public class ProxyServer {
         responseBuffer.putShort((short) destinationPort); // Выданный сервером порт
         responseBuffer.flip();
         clientChannel.write(responseBuffer);
-
-        return remoteChannel;
     }
-    private static InetAddress resolveDomain(String domain) throws IOException {
-        Lookup lookup = new Lookup(domain, Type.A);
-        Record[] records = lookup.run();
 
-        if (records == null || records.length == 0) {
-            throw new IOException("Failed to resolve domain: " + domain);
-        }
-
-        for (Record record : records) {
-            if (record instanceof ARecord aRecord) {
-                String ipAddress = aRecord.getAddress().getHostAddress();
-                return InetAddress.getByName(ipAddress);
-            }
-        }
-
-        throw new IOException("No IPv4 address found for domain: " + domain);
-    }
-    private static void transferData(SocketChannel clientChannel, SocketChannel remoteChannel) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(14336);
+    private void transferData(ConnectionInfo connectionInfo) throws IOException {
+        ByteBuffer buffer = ByteBuffer.allocate(143360);
+        SocketChannel clientChannel = connectionInfo.getClientChannel();
+        SocketChannel remoteChannel = connectionInfo.getRemoteChannel();
 
         int bytesRead = clientChannel.read(buffer);
         if (bytesRead == -1) {
+            System.out.println("Client disconnected");
             clientChannel.close();
             remoteChannel.close();
-            sockets.remove(clientChannel);
-            sockets.remove(remoteChannel);
+            connections.remove(clientChannel);
+            connections.remove(remoteChannel);
             return;
         }
         buffer.flip();
 
         int bytesWrite = remoteChannel.write(buffer);
         if (bytesWrite == -1) {
+            System.out.println("Error writing to remote channel");
             clientChannel.close();
             remoteChannel.close();
-            sockets.remove(clientChannel);
-            sockets.remove(remoteChannel);
+            connections.remove(clientChannel);
+            connections.remove(remoteChannel);
             return;
         }
         buffer.flip();
