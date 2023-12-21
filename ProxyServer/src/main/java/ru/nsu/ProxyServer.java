@@ -52,8 +52,8 @@ public class ProxyServer {
                             readConnection(key);
                         }
                     } catch (Exception e) {
-                        System.err.println(e.getMessage());
                         SocketChannel sc = (SocketChannel) key.channel();
+                        System.err.println(e.getMessage() + " from " + sc.getRemoteAddress());
                         if (sc != null) {
                             SocketChannel rc = connections.get(sc).getRemoteChannel();
                             sc.close();
@@ -227,15 +227,17 @@ public class ProxyServer {
         SocketChannel remoteChannel = connectionInfo.getRemoteChannel();
 
         int bytesRead = clientChannel.read(buffer);
-        if (bytesRead == -1) {
-            throw new IOException("Transfer from client failed");
+        if (bytesRead > 0) {
+            buffer.flip();
+            while (buffer.hasRemaining()) {
+                remoteChannel.write(buffer);
+            }
+            buffer.compact();
+        } else if (bytesRead == -1) {
+            clientChannel.shutdownOutput();
+            if (remoteChannel.socket().isInputShutdown()) {
+                throw new IOException("Transfer ended!");
+            }
         }
-        buffer.flip();
-
-        int bytesWrite = remoteChannel.write(buffer);
-        if (bytesWrite == -1) {
-            throw new IOException("Transfer to remote failed");
-        }
-        buffer.flip();
     }
 }
