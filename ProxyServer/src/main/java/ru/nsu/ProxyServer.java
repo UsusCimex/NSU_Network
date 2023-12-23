@@ -51,11 +51,11 @@ public class ProxyServer {
                         }
 
                         if (key.isAcceptable()) {
-                            // Принимаем входящее соединение и запускаем обработку в отдельном потоке
                             acceptConnection(key);
                         } else if (key.isReadable()) {
-                            // Транслируем соединение между remoteSocket и ClientSocket
                             readConnection(key);
+                        } else if (key.isConnectable()) {
+                            finishConnection(key);
                         }
                     } catch (Exception e) {
                         if (key.channel() instanceof SocketChannel) {
@@ -83,6 +83,42 @@ public class ProxyServer {
             e.printStackTrace();
         }
     }
+
+    private void finishConnection(SelectionKey key) throws IOException {
+        SocketChannel channel = (SocketChannel) key.channel();
+        try {
+            if (channel.isConnectionPending()) {
+                channel.finishConnect();
+            }
+            channel.register(selector, SelectionKey.OP_READ);
+
+            ConnectionInfo connectionInfo = connections.get(channel);
+            if (connectionInfo == null) {
+                channel.close();
+                return;
+            }
+            SocketChannel clientChannel = connectionInfo.getRemoteChannel();
+            InetAddress destinationAddress = channel.socket().getInetAddress();
+            int destinationPort = channel.socket().getPort();
+
+            // Отправляем ответ клиенту
+            ByteBuffer responseBuffer = ByteBuffer.allocate(10); //IPv4 - 10 bytes, IPv6 - 22 bytes
+            responseBuffer.put((byte) 5); // Версия SOCKS5
+            responseBuffer.put((byte) 0); // 0 - Успех, 1 - ошибка SOCKS сервера
+            responseBuffer.put((byte) 0); // Зарезервировано
+            responseBuffer.put((byte) 1); // Тип адреса, 1 - IPv4, 3 - DNS
+            responseBuffer.put(destinationAddress.getAddress()); // IP-адрес
+            responseBuffer.putShort((short) destinationPort); // Порт
+            responseBuffer.flip();
+            clientChannel.write(responseBuffer);
+        } catch (IOException e) {
+            key.cancel();
+            channel.close();
+            // Обработка ошибки подключения
+        }
+    }
+
+
     public static void main(String[] args) throws IOException {
         int port = 1080; // Порт прокси-сервера default 1080
         if (args.length != 0) port = Integer.parseInt(args[0]);
@@ -150,28 +186,13 @@ public class ProxyServer {
                 SocketChannel remoteChannel = SocketChannel.open();
                 remoteChannel.configureBlocking(false);
                 remoteChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
-                if (remoteChannel.isConnectionPending()) {
-                    remoteChannel.finishConnect();
-                }
-                remoteChannel.register(selector, SelectionKey.OP_READ);
+                remoteChannel.register(selector, SelectionKey.OP_CONNECT);
 
                 connectionInfo.setRemoteChannel(remoteChannel);
-
-                // Отправляем ответ клиенту
-                ByteBuffer responseBuffer = ByteBuffer.allocate(10); //IPv4 - 10 bytes, IPv6 - 22 bytes
-                responseBuffer.put((byte) 5); // Версия SOCKS5
-                responseBuffer.put((byte) 0); // 0 - Успех, 1 - ошибка SOCKS сервера
-                responseBuffer.put((byte) 0); // Зарезервировано
-                responseBuffer.put((byte) 1); // Тип адреса, 1 - IPv4, 3 - DNS
-                responseBuffer.put(destinationAddress.getAddress()); // IP-адрес
-                responseBuffer.putShort((short) destinationPort); // Порт
-                responseBuffer.flip();
-                clientChannel.write(responseBuffer);
-
-                pendingDNSRequests.remove(queryId); // Удалить обработанный запрос из списка ожидания
-
                 connectionInfo.setState(ConnectionInfo.State.DATA_TRANSFER);
                 connections.put(connectionInfo.getRemoteChannel(), new ConnectionInfo(connectionInfo));
+
+                pendingDNSRequests.remove(queryId); // Удалить обработанный запрос из списка ожидания
             }
         } else if (key.channel() instanceof SocketChannel) {
             SocketChannel clientChannel = (SocketChannel) key.channel();
@@ -286,7 +307,6 @@ public class ProxyServer {
     private void transferData(ConnectionInfo connectionInfo) throws IOException {
         SocketChannel clientChannel = connectionInfo.getClientChannel();
         SocketChannel remoteChannel = connectionInfo.getRemoteChannel();
-        if (!remoteChannel.finishConnect()) return;
 
         ByteBuffer buffer = ByteBuffer.allocate(143360);
         int bytesRead = clientChannel.read(buffer);
@@ -316,6 +336,5 @@ public class ProxyServer {
         byte[] queryBytes = query.toWire();
         ByteBuffer buffer = ByteBuffer.wrap(queryBytes);
         dnsChannel.send(buffer, dnsServerAddress);
-        System.err.println("dns send req completed!");
     }
 }
