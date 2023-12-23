@@ -6,6 +6,7 @@ import java.nio.channels.SocketChannel;
 public class ConnectionInfo {
     private SocketChannel clientChannel;
     private SocketChannel remoteChannel;
+    private int destinationPort;
 
     enum State {
         INITIAL,
@@ -45,5 +46,12 @@ public class ConnectionInfo {
     }
     public void setRemoteChannel(SocketChannel remoteChannel) {
         this.remoteChannel = remoteChannel;
+    }
+
+    public int getDestinationPort() {
+        return this.destinationPort;
+    }
+    public void setDestinationPort(int port) {
+        this.destinationPort = port;
     }
 }
