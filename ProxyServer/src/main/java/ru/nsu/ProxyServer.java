@@ -58,20 +58,16 @@ public class ProxyServer {
                             finishConnection(key);
                         }
                     } catch (Exception e) {
-                        if (key.channel() instanceof SocketChannel) {
-                            SocketChannel sc = (SocketChannel) key.channel();
+                        if (key.channel() instanceof SocketChannel sc) {
                             System.err.println(e.getMessage() + " from " + sc.getRemoteAddress());
-                            if (sc != null) {
-                                SocketChannel rc = connections.get(sc).getRemoteChannel();
-                                sc.close();
-                                connections.remove(sc);
-                                if (rc != null) {
-                                    rc.close();
-                                    connections.remove(rc);
-                                }
+                            SocketChannel rc = connections.get(sc).getRemoteChannel();
+                            sc.close();
+                            connections.remove(sc);
+                            if (rc != null) {
+                                rc.close();
+                                connections.remove(rc);
                             }
                         } else if (key.channel() instanceof DatagramChannel) {
-                            DatagramChannel dc = (DatagramChannel) key.channel();
                             System.err.println("dcError");
                             e.printStackTrace();
                         }
@@ -142,16 +138,14 @@ public class ProxyServer {
     }
 
     private void readConnection(SelectionKey key) throws IOException {
-        if (key.channel() instanceof DatagramChannel) {
-            DatagramChannel datagramChannel = (DatagramChannel) key.channel();
+        if (key.channel() instanceof DatagramChannel datagramChannel) {
             ByteBuffer buffer = ByteBuffer.allocate(512); // Размер буфера может быть изменен в зависимости от потребностей
             datagramChannel.receive(buffer);
             buffer.flip();
 
             Message response = new Message(buffer.array());
-            Record[] records = response.getSectionArray(Section.ANSWER);
-            if (records.length == 0) {
-                // Обработка ситуации, когда запись не найдена
+            List<Record> records = response.getSection(Section.ANSWER);
+            if (records.size() == 0) {
                 return;
             }
 
@@ -159,30 +153,24 @@ public class ProxyServer {
             for (Record record : records) {
                 if (record instanceof ARecord) {
                     destinationAddress = ((ARecord) record).getAddress();
-                    break; // Нашли A запись, выходим из цикла
+                    break;
                 }
             }
             if (destinationAddress == null) {
-                // Обработка ситуации, когда A запись не найдена
                 return;
             }
             int queryId = response.getHeader().getID();
 
-            // Найти соответствующее соединение
             String domain = pendingDNSRequests.get(queryId);
             if (domain != null) {
-                // Получаем ConnectionInfo по ID запроса
                 ConnectionInfo connectionInfo = dnsQueryConnections.get(queryId);
                 if (connectionInfo == null) {
-                    // Обработка ситуации, когда ConnectionInfo не найдено
                     System.err.println("Con info = null");
                     return;
                 }
 
-                SocketChannel clientChannel = connectionInfo.getClientChannel();
                 int destinationPort = connectionInfo.getDestinationPort();
 
-                // Устанавливаем соединение с удаленным сервером
                 SocketChannel remoteChannel = SocketChannel.open();
                 remoteChannel.configureBlocking(false);
                 remoteChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
@@ -192,10 +180,9 @@ public class ProxyServer {
                 connectionInfo.setState(ConnectionInfo.State.DATA_TRANSFER);
                 connections.put(connectionInfo.getRemoteChannel(), new ConnectionInfo(connectionInfo));
 
-                pendingDNSRequests.remove(queryId); // Удалить обработанный запрос из списка ожидания
+                pendingDNSRequests.remove(queryId);
             }
-        } else if (key.channel() instanceof SocketChannel) {
-            SocketChannel clientChannel = (SocketChannel) key.channel();
+        } else if (key.channel() instanceof SocketChannel clientChannel) {
             ConnectionInfo connectionInfo = connections.get(clientChannel);
             if (connectionInfo != null) {
                 switch (connectionInfo.getState()) {
@@ -232,7 +219,7 @@ public class ProxyServer {
 
         // Проверяем версию и количество методов аутентификации.
         if (version != 5 || authMethodsCount == 0) {
-            throw new IOException("Authorization failed! (Version or authmethod exception)");
+            throw new IOException("Authorization failed! (Version or auth-method exception)");
         }
 
         // Считываем список методов аутентификации, но мы не будем их анализировать, так как будем использовать анонимный доступ.
@@ -267,7 +254,6 @@ public class ProxyServer {
             throw new IOException("Connection failed! (version or command exception)");
         }
 
-        InetAddress destinationAddress;
         // В зависимости от типа адреса, вы можете обработать соответствующий запрос.
         if (addressType == 1) {
             // IPv4 адрес
@@ -308,7 +294,7 @@ public class ProxyServer {
         SocketChannel clientChannel = connectionInfo.getClientChannel();
         SocketChannel remoteChannel = connectionInfo.getRemoteChannel();
 
-        ByteBuffer buffer = ByteBuffer.allocate(143360);
+        ByteBuffer buffer = ByteBuffer.allocate(14336);
         int bytesRead = clientChannel.read(buffer);
         if (bytesRead > 0) {
             buffer.flip();

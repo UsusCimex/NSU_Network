@@ -1,10 +1,9 @@
 package ru.nsu;
 
-import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
 public class ConnectionInfo {
-    private SocketChannel clientChannel;
+    private final SocketChannel clientChannel;
     private SocketChannel remoteChannel;
     private int destinationPort;
 
