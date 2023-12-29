@@ -69,7 +69,7 @@ public class ProxyServer {
                         }
                     } catch (Exception e) {
                         if (key.channel() instanceof SocketChannel sc) {
-                            e.printStackTrace();
+//                            e.printStackTrace();
                             System.err.println(e.getMessage() + " from " + sc.getRemoteAddress());
                             SocketChannel rc = connections.get(sc).getRemoteChannel();
                             sc.close();
@@ -117,12 +117,13 @@ public class ProxyServer {
         ConnectionInfo connectionInfo = connections.get(channel);
         if (connectionInfo != null) {
             ByteBuffer remoteBuffer = connectionInfo.getBuffer();
-//            System.err.println("120: " + remoteBuffer.position());
             remoteBuffer.flip();
             if (!channel.isConnected()) return;
-            channel.write(remoteBuffer);
+            int bytesWrited = channel.write(remoteBuffer);
+            if (bytesWrited == -1) {
+                throw new RuntimeException("Write blocked");
+            }
             remoteBuffer.compact();
-//            System.err.println("125: " + remoteBuffer.position());
 
             if (remoteBuffer.position() == 0) {
                 channel.register(selector, SelectionKey.OP_READ);
@@ -223,9 +224,8 @@ public class ProxyServer {
             if (connectionInfo != null) {
                 ByteBuffer buffer = connectionInfo.getBuffer();
                 int bytesRead = clientChannel.read(buffer);
-//                System.err.println("226: " + bytesRead + " " + buffer.position());
                 if (bytesRead == -1) {
-                    throw new IOException("Authorization failed! (first read)");
+                    throw new RuntimeException("Read blocked");
                 }
 
                 switch (connectionInfo.getState()) {
@@ -347,10 +347,8 @@ public class ProxyServer {
         ByteBuffer clientBuffer = connectionInfo.getBuffer();
         ByteBuffer remoteBuffer = connections.get(remoteChannel).getBuffer();
 
-//        System.err.println("350: client " + clientBuffer.position() + ", remote " + remoteBuffer.position());
         clientBuffer.flip();
         remoteBuffer.put(clientBuffer);
-//        System.err.println("354: client " + clientBuffer.position() + ", remote " + remoteBuffer.position());
 
         if (remoteBuffer.position() > 0) {
             remoteChannel.register(selector, SelectionKey.OP_WRITE);
