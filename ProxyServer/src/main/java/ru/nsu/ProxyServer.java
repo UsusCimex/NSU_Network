@@ -7,14 +7,16 @@ import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.xbill.DNS.*;
 import org.xbill.DNS.Record;
 
 public class ProxyServer {
-    private final Map<Integer, ConnectionInfo> dnsQueryConnections = new HashMap<>();
-    private final Map<Integer, String> pendingDNSRequests = new HashMap<>();
-    private static final Map<SocketChannel, ConnectionInfo> connections = new HashMap<>();
+    private final ConcurrentHashMap<Integer, DnsRequest> pendingDNSRequests = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<SocketChannel, ConnectionInfo> connections = new ConcurrentHashMap<>();
+    private static final Long TIMEOUT = 500L;
+    public static final Integer MAX_RETRIES = 5;
     private static Selector selector;
     private final InetSocketAddress address;
     private final DatagramChannel dnsChannel;
@@ -32,11 +34,13 @@ public class ProxyServer {
         dnsChannel.configureBlocking(false);
         dnsChannel.register(selector, SelectionKey.OP_READ);
     }
+
     public void start() {
         System.out.println("The proxy server is running on address " + address);
         try {
-            while (true) {
-                int readyChannels = selector.select();
+            while (!Thread.interrupted()) {
+                int readyChannels = selector.select(TIMEOUT);
+                checkForDnsQueryTimeouts();
                 if (readyChannels == 0) continue;
 
                 Iterator<SelectionKey> keyIterator = selector.selectedKeys().iterator();
@@ -47,18 +51,25 @@ public class ProxyServer {
 
                     try {
                         if (!key.isValid()) {
+                            key.cancel();
                             continue;
                         }
 
                         if (key.isAcceptable()) {
                             acceptConnection(key);
-                        } else if (key.isReadable()) {
+                        }
+                        if (key.isReadable()) {
                             readConnection(key);
-                        } else if (key.isConnectable()) {
+                        }
+                        if (key.isConnectable()) {
                             finishConnection(key);
+                        }
+                        if (key.isWritable()) {
+                            handleWritable(key);
                         }
                     } catch (Exception e) {
                         if (key.channel() instanceof SocketChannel sc) {
+                            e.printStackTrace();
                             System.err.println(e.getMessage() + " from " + sc.getRemoteAddress());
                             SocketChannel rc = connections.get(sc).getRemoteChannel();
                             sc.close();
@@ -77,6 +88,45 @@ public class ProxyServer {
             }
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private void checkForDnsQueryTimeouts() throws IOException {
+        long currentTime = System.currentTimeMillis();
+        for (Iterator<Map.Entry<Integer, DnsRequest>> it = pendingDNSRequests.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<Integer, DnsRequest> entry = it.next();
+            DnsRequest dnsRequest = entry.getValue();
+
+            if (currentTime - dnsRequest.getSendTime() > TIMEOUT) {
+                if (dnsRequest.getRetryCount() < MAX_RETRIES) {
+                    resolveDomainAsync(dnsRequest.getDomain(), dnsRequest.getConnectionInfo());
+                    dnsRequest.setSendTime(currentTime);
+                    dnsRequest.setRetryCount(dnsRequest.getRetryCount() + 1);
+                } else {
+                    System.err.println("Dns domain not found!");
+                    it.remove();
+                    dnsRequest.getConnectionInfo().getClientChannel().close();
+                    connections.remove(dnsRequest.getConnectionInfo().getClientChannel());
+                }
+            }
+        }
+    }
+
+    private void handleWritable(SelectionKey key) throws IOException {
+        SocketChannel channel = (SocketChannel) key.channel();
+        ConnectionInfo connectionInfo = connections.get(channel);
+        if (connectionInfo != null) {
+            ByteBuffer remoteBuffer = connectionInfo.getBuffer();
+//            System.err.println("120: " + remoteBuffer.position());
+            remoteBuffer.flip();
+            if (!channel.isConnected()) return;
+            channel.write(remoteBuffer);
+            remoteBuffer.compact();
+//            System.err.println("125: " + remoteBuffer.position());
+
+            if (remoteBuffer.position() == 0) {
+                channel.register(selector, SelectionKey.OP_READ);
+            }
         }
     }
 
@@ -108,12 +158,9 @@ public class ProxyServer {
             responseBuffer.flip();
             clientChannel.write(responseBuffer);
         } catch (IOException e) {
-            key.cancel();
-            channel.close();
-            // Обработка ошибки подключения
+            throw new IOException("Finish connection failed!");
         }
     }
-
 
     public static void main(String[] args) throws IOException {
         int port = 1080; // Порт прокси-сервера default 1080
@@ -139,7 +186,7 @@ public class ProxyServer {
 
     private void readConnection(SelectionKey key) throws IOException {
         if (key.channel() instanceof DatagramChannel datagramChannel) {
-            ByteBuffer buffer = ByteBuffer.allocate(512); // Размер буфера может быть изменен в зависимости от потребностей
+            ByteBuffer buffer = ByteBuffer.allocate(512);
             datagramChannel.receive(buffer);
             buffer.flip();
 
@@ -161,30 +208,26 @@ public class ProxyServer {
             }
             int queryId = response.getHeader().getID();
 
-            String domain = pendingDNSRequests.get(queryId);
-            if (domain != null) {
-                ConnectionInfo connectionInfo = dnsQueryConnections.get(queryId);
+            DnsRequest dnsRequest = pendingDNSRequests.get(queryId);
+            if (dnsRequest != null) {
+                ConnectionInfo connectionInfo = dnsRequest.getConnectionInfo();
                 if (connectionInfo == null) {
                     System.err.println("Con info = null");
                     return;
                 }
-
-                int destinationPort = connectionInfo.getDestinationPort();
-
-                SocketChannel remoteChannel = SocketChannel.open();
-                remoteChannel.configureBlocking(false);
-                remoteChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
-                remoteChannel.register(selector, SelectionKey.OP_CONNECT);
-
-                connectionInfo.setRemoteChannel(remoteChannel);
-                connectionInfo.setState(ConnectionInfo.State.DATA_TRANSFER);
-                connections.put(connectionInfo.getRemoteChannel(), new ConnectionInfo(connectionInfo));
-
+                connectRemoteChannel(destinationAddress, connectionInfo);
                 pendingDNSRequests.remove(queryId);
             }
         } else if (key.channel() instanceof SocketChannel clientChannel) {
             ConnectionInfo connectionInfo = connections.get(clientChannel);
             if (connectionInfo != null) {
+                ByteBuffer buffer = connectionInfo.getBuffer();
+                int bytesRead = clientChannel.read(buffer);
+//                System.err.println("226: " + bytesRead + " " + buffer.position());
+                if (bytesRead == -1) {
+                    throw new IOException("Authorization failed! (first read)");
+                }
+
                 switch (connectionInfo.getState()) {
                     case INITIAL:
                         break;
@@ -199,21 +242,35 @@ public class ProxyServer {
                         transferData(connectionInfo);
                         break;
                 }
+
+                if (buffer.hasRemaining()) {
+                    buffer.compact();
+                } else {
+                    buffer.clear();
+                }
             }
         }
     }
 
+    private void connectRemoteChannel(InetAddress destinationAddress, ConnectionInfo connectionInfo) throws IOException {
+        int destinationPort = connectionInfo.getDestinationPort();
+
+        SocketChannel remoteChannel = SocketChannel.open();
+        remoteChannel.configureBlocking(false);
+        remoteChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
+        remoteChannel.register(selector, SelectionKey.OP_CONNECT);
+
+        connectionInfo.setRemoteChannel(remoteChannel);
+        connectionInfo.setState(ConnectionInfo.State.DATA_TRANSFER);
+        connections.put(connectionInfo.getRemoteChannel(), new ConnectionInfo(connectionInfo));
+    }
+
     private void handleSocksAuthorization(ConnectionInfo connectionInfo) throws IOException {
         SocketChannel clientChannel = connectionInfo.getClientChannel();
-        ByteBuffer buffer = ByteBuffer.allocate(256);
-        // Читаем данные от клиента в буфер.
-        int bytesRead = clientChannel.read(buffer);
-        if (bytesRead == -1) {
-            throw new IOException("Authorization failed! (first read)");
-        }
-
-        // Парсим SOCKS5 протокол.
+        ByteBuffer buffer = connectionInfo.getBuffer();
+        if (buffer.position() < 2) return;
         buffer.flip();
+        // Парсим SOCKS5 протокол.
         byte version = buffer.get();
         byte authMethodsCount = buffer.get();
 
@@ -236,13 +293,8 @@ public class ProxyServer {
 
     private void handleSocksConnection(ConnectionInfo connectionInfo) throws IOException {
         SocketChannel clientChannel = connectionInfo.getClientChannel();
-        ByteBuffer buffer = ByteBuffer.allocate(256);
-
-        // Считываем команды от клиента
-        int bytesRead = clientChannel.read(buffer);
-        if (bytesRead == -1) {
-            throw new IOException("Connection failed! (first read)");
-        }
+        ByteBuffer buffer = connectionInfo.getBuffer();
+        if (buffer.position() < 4) return;
         buffer.flip();
 
         byte ver = buffer.get(); // Версия протокола (5)
@@ -260,9 +312,9 @@ public class ProxyServer {
             if (buffer.remaining() >= 4) {
                 byte[] ipAddress = new byte[4];
                 buffer.get(ipAddress); // IP адрес
-                String domain = new String(ipAddress, StandardCharsets.US_ASCII);
+                String address = new String(ipAddress, StandardCharsets.US_ASCII);
                 connectionInfo.setDestinationPort(buffer.getShort());
-                resolveDomainAsync(domain, connectionInfo);
+                connectRemoteChannel(InetAddress.getByName(address), connectionInfo);
             } else {
                 throw new IOException("Connection failed! (need 4 bytes to ipv4)");
             }
@@ -291,22 +343,17 @@ public class ProxyServer {
     }
 
     private void transferData(ConnectionInfo connectionInfo) throws IOException {
-        SocketChannel clientChannel = connectionInfo.getClientChannel();
         SocketChannel remoteChannel = connectionInfo.getRemoteChannel();
+        ByteBuffer clientBuffer = connectionInfo.getBuffer();
+        ByteBuffer remoteBuffer = connections.get(remoteChannel).getBuffer();
 
-        ByteBuffer buffer = ByteBuffer.allocate(14336);
-        int bytesRead = clientChannel.read(buffer);
-        if (bytesRead > 0) {
-            buffer.flip();
-            while (buffer.hasRemaining()) {
-                remoteChannel.write(buffer);
-            }
-            buffer.compact();
-        } else if (bytesRead == -1) {
-            clientChannel.shutdownOutput();
-            if (remoteChannel.socket().isInputShutdown()) {
-                throw new IOException("Transfer ended!");
-            }
+//        System.err.println("350: client " + clientBuffer.position() + ", remote " + remoteBuffer.position());
+        clientBuffer.flip();
+        remoteBuffer.put(clientBuffer);
+//        System.err.println("354: client " + clientBuffer.position() + ", remote " + remoteBuffer.position());
+
+        if (remoteBuffer.position() > 0) {
+            remoteChannel.register(selector, SelectionKey.OP_WRITE);
         }
     }
 
@@ -315,9 +362,8 @@ public class ProxyServer {
         Message query = Message.newQuery(rec);
         int queryId = query.getHeader().getID();
 
-        // Связываем ID запроса с ConnectionInfo
-        dnsQueryConnections.put(queryId, connectionInfo);
-        pendingDNSRequests.put(queryId, domain);
+        DnsRequest dnsRequest = new DnsRequest(domain, connectionInfo, System.currentTimeMillis(), 0);
+        pendingDNSRequests.put(queryId, dnsRequest);
 
         byte[] queryBytes = query.toWire();
         ByteBuffer buffer = ByteBuffer.wrap(queryBytes);

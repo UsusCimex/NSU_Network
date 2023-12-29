@@ -1,11 +1,13 @@
 package ru.nsu;
 
+import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
 public class ConnectionInfo {
     private final SocketChannel clientChannel;
     private SocketChannel remoteChannel;
     private int destinationPort;
+    private ByteBuffer buffer;
 
     enum State {
         INITIAL,
@@ -19,6 +21,8 @@ public class ConnectionInfo {
     public ConnectionInfo(SocketChannel clientChannel) {
         this.clientChannel = clientChannel;
         this.state = State.INITIAL;
+        this.buffer = ByteBuffer.allocate(48496);
+//        System.err.println("buf init pos: " + buffer.position());
     }
 
     public ConnectionInfo(ConnectionInfo connectionInfo) {
@@ -26,6 +30,7 @@ public class ConnectionInfo {
         this.clientChannel = connectionInfo.getRemoteChannel();
         this.remoteChannel = connectionInfo.getClientChannel();
         this.state = connectionInfo.getState();
+        this.buffer = ByteBuffer.allocate(48496);
     }
 
     public SocketChannel getClientChannel() {
@@ -52,5 +57,8 @@ public class ConnectionInfo {
     }
     public void setDestinationPort(int port) {
         this.destinationPort = port;
+    }
+    public ByteBuffer getBuffer() {
+        return buffer;
     }
 }
