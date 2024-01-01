@@ -70,7 +70,7 @@ public class ProxyServer {
                     } catch (Exception e) {
                         if (key.channel() instanceof SocketChannel sc) {
 //                            e.printStackTrace();
-                            System.err.println(e.getMessage() + " from " + sc.getRemoteAddress());
+                            System.err.println(e.getMessage() + " from " + sc.getLocalAddress());
                             SocketChannel rc = connections.get(sc).getRemoteChannel();
                             sc.close();
                             connections.remove(sc);
@@ -105,8 +105,17 @@ public class ProxyServer {
                 } else {
                     System.err.println("Dns domain not found!");
                     it.remove();
-                    dnsRequest.getConnectionInfo().getClientChannel().close();
-                    connections.remove(dnsRequest.getConnectionInfo().getClientChannel());
+                    ByteBuffer responseBuffer = ByteBuffer.allocate(2);
+                    responseBuffer.put((byte) 5); // Версия SOCKS5
+                    responseBuffer.put((byte) 1); // 0 - Успех, 1 - ошибка SOCKS сервер
+                    responseBuffer.flip();
+                    try {
+                        dnsRequest.getConnectionInfo().getClientChannel().write(responseBuffer);
+                        dnsRequest.getConnectionInfo().getClientChannel().close();
+                        connections.remove(dnsRequest.getConnectionInfo().getClientChannel());
+                    } catch (IOException e) {
+                        System.err.println("Client closed");
+                    }
                 }
             }
         }
@@ -116,19 +125,34 @@ public class ProxyServer {
         SocketChannel channel = (SocketChannel) key.channel();
         ConnectionInfo connectionInfo = connections.get(channel);
         if (connectionInfo != null) {
-            ByteBuffer remoteBuffer = connectionInfo.getBuffer();
+            ByteBuffer remoteBuffer = connectionInfo.getWriteBuffer();
             remoteBuffer.flip();
             if (!channel.isConnected()) return;
-            int bytesWrited = channel.write(remoteBuffer);
-            if (bytesWrited == -1) {
+            int bytesWrote = channel.write(remoteBuffer);
+            if (bytesWrote == -1) {
                 throw new RuntimeException("Write blocked");
             }
             remoteBuffer.compact();
 
             if (remoteBuffer.position() == 0) {
-                channel.register(selector, SelectionKey.OP_READ);
+                channel.register(selector, key.interestOps() & ~SelectionKey.OP_WRITE);
+                if (connectionInfo.isFinished()) {
+                    checkAndCloseIfFinished(connectionInfo);
+                }
             }
         }
+    }
+
+    private void checkAndCloseIfFinished(ConnectionInfo connectionInfo) throws IOException {
+        if (connectionInfo.isFinished() && isBufferEmpty(connectionInfo)) {
+            connectionInfo.getClientChannel().close();
+            connectionInfo.getRemoteChannel().close();
+            connections.remove(connectionInfo.getClientChannel());
+            connections.remove(connectionInfo.getRemoteChannel());
+        }
+    }
+    private boolean isBufferEmpty(ConnectionInfo connectionInfo) {
+        return connectionInfo.getWriteBuffer().position() == 0;
     }
 
     private void finishConnection(SelectionKey key) throws IOException {
@@ -222,10 +246,13 @@ public class ProxyServer {
         } else if (key.channel() instanceof SocketChannel clientChannel) {
             ConnectionInfo connectionInfo = connections.get(clientChannel);
             if (connectionInfo != null) {
-                ByteBuffer buffer = connectionInfo.getBuffer();
-                int bytesRead = clientChannel.read(buffer);
+                ByteBuffer buffer = connectionInfo.getReadBuffer();
+                int bytesRead = clientChannel.read(buffer); //////
                 if (bytesRead == -1) {
-                    throw new RuntimeException("Read blocked");
+                    connectionInfo.setFinished(true);
+                    SocketChannel remoteChannel = connectionInfo.getRemoteChannel();
+                    remoteChannel.shutdownOutput();
+                    return;
                 }
 
                 switch (connectionInfo.getState()) {
@@ -267,7 +294,7 @@ public class ProxyServer {
 
     private void handleSocksAuthorization(ConnectionInfo connectionInfo) throws IOException {
         SocketChannel clientChannel = connectionInfo.getClientChannel();
-        ByteBuffer buffer = connectionInfo.getBuffer();
+        ByteBuffer buffer = connectionInfo.getReadBuffer();
         if (buffer.position() < 2) return;
         buffer.flip();
         // Парсим SOCKS5 протокол.
@@ -293,7 +320,7 @@ public class ProxyServer {
 
     private void handleSocksConnection(ConnectionInfo connectionInfo) throws IOException {
         SocketChannel clientChannel = connectionInfo.getClientChannel();
-        ByteBuffer buffer = connectionInfo.getBuffer();
+        ByteBuffer buffer = connectionInfo.getReadBuffer();
         if (buffer.position() < 4) return;
         buffer.flip();
 
@@ -344,14 +371,14 @@ public class ProxyServer {
 
     private void transferData(ConnectionInfo connectionInfo) throws IOException {
         SocketChannel remoteChannel = connectionInfo.getRemoteChannel();
-        ByteBuffer clientBuffer = connectionInfo.getBuffer();
-        ByteBuffer remoteBuffer = connections.get(remoteChannel).getBuffer();
+        ByteBuffer clientBuffer = connectionInfo.getReadBuffer();
+        ByteBuffer remoteBuffer = connections.get(remoteChannel).getWriteBuffer();
 
         clientBuffer.flip();
         remoteBuffer.put(clientBuffer);
 
         if (remoteBuffer.position() > 0) {
-            remoteChannel.register(selector, SelectionKey.OP_WRITE);
+            remoteChannel.register(selector, remoteChannel.keyFor(selector).interestOps() | SelectionKey.OP_WRITE);
         }
     }
 

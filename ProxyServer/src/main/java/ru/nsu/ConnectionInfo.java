@@ -7,7 +7,9 @@ public class ConnectionInfo {
     private final SocketChannel clientChannel;
     private SocketChannel remoteChannel;
     private int destinationPort;
-    private ByteBuffer buffer;
+    private final ByteBuffer readBuffer;
+    private final ByteBuffer writeBuffer;
+    private boolean isFinished = false;
 
     enum State {
         INITIAL,
@@ -21,8 +23,8 @@ public class ConnectionInfo {
     public ConnectionInfo(SocketChannel clientChannel) {
         this.clientChannel = clientChannel;
         this.state = State.INITIAL;
-        this.buffer = ByteBuffer.allocate(48496);
-//        System.err.println("buf init pos: " + buffer.position());
+        this.readBuffer = ByteBuffer.allocate(48496);
+        this.writeBuffer = ByteBuffer.allocate(48496);
     }
 
     public ConnectionInfo(ConnectionInfo connectionInfo) {
@@ -30,7 +32,8 @@ public class ConnectionInfo {
         this.clientChannel = connectionInfo.getRemoteChannel();
         this.remoteChannel = connectionInfo.getClientChannel();
         this.state = connectionInfo.getState();
-        this.buffer = ByteBuffer.allocate(48496);
+        this.readBuffer = ByteBuffer.allocate(48496);
+        this.writeBuffer = ByteBuffer.allocate(48496);
     }
 
     public SocketChannel getClientChannel() {
@@ -58,7 +61,17 @@ public class ConnectionInfo {
     public void setDestinationPort(int port) {
         this.destinationPort = port;
     }
-    public ByteBuffer getBuffer() {
-        return buffer;
+    public ByteBuffer getReadBuffer() {
+        return readBuffer;
+    }
+    public ByteBuffer getWriteBuffer() {
+        return writeBuffer;
+    }
+    public boolean isFinished() {
+        return isFinished;
+    }
+
+    public void setFinished(boolean finished) {
+        isFinished = finished;
     }
 }
