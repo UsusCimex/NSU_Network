@@ -247,7 +247,7 @@ public class ProxyServer {
             ConnectionInfo connectionInfo = connections.get(clientChannel);
             if (connectionInfo != null) {
                 ByteBuffer buffer = connectionInfo.getReadBuffer();
-                int bytesRead = clientChannel.read(buffer); //////
+                int bytesRead = clientChannel.read(buffer);
                 if (bytesRead == -1) {
                     connectionInfo.setFinished(true);
                     SocketChannel remoteChannel = connectionInfo.getRemoteChannel();
