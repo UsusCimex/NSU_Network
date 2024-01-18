@@ -127,18 +127,22 @@ public class ProxyServer {
         if (connectionInfo != null) {
             ByteBuffer remoteBuffer = connectionInfo.getWriteBuffer();
             remoteBuffer.flip();
-            if (!channel.isConnected()) return;
-            int bytesWrote = channel.write(remoteBuffer);
-            if (bytesWrote == -1) {
-                throw new RuntimeException("Write blocked");
-            }
-            remoteBuffer.compact();
-
-            if (remoteBuffer.position() == 0) {
-                channel.register(selector, key.interestOps() & ~SelectionKey.OP_WRITE);
-                if (connectionInfo.isFinished()) {
-                    checkAndCloseIfFinished(connectionInfo);
+            try {
+                if (!channel.isConnected() || !channel.isOpen()) return;
+                int bytesWrote = channel.write(remoteBuffer);
+                if (bytesWrote == -1) {
+                    throw new IOException("Write blocked");
                 }
+                remoteBuffer.compact();
+
+                if (remoteBuffer.position() == 0) {
+                    channel.register(selector, key.interestOps() & ~SelectionKey.OP_WRITE);
+                    if (connectionInfo.isFinished()) {
+                        checkAndCloseIfFinished(connectionInfo);
+                    }
+                }
+            } catch (IOException e) {
+                throw new IOException("Exception in handleWritable");
             }
         }
     }
