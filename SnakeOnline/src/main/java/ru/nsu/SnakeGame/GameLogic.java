@@ -2,9 +2,6 @@ package ru.nsu.SnakeGame;
 
 import ru.nsu.SnakesProto.*;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class GameLogic {
     private final GameField gameField;
 
